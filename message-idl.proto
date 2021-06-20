@@ -1,0 +1,68 @@
+syntax = "proto3";
+package qabalwrap1;
+
+option go_package = "github.com/qabalwrap/qabalwrap-1/gen/qbw1grpcgen";
+
+message ServiceIdent {
+	string unique_ident = 1;
+	int32 serial_ident = 2;
+	string text_ident = 3;
+	bytes public_key = 4;
+	int32 link_hop_count = 5;
+}
+
+message KnownServiceIdents {
+	int32 primary_serial_ident = 1;
+	int32 max_serial_ident = 2;
+	repeated ServiceIdent service_idents = 3;
+}
+
+message AllocateServiceIdentsRequest {
+	repeated ServiceIdent service_idents = 1;
+}
+
+message HostCertificateRequest {
+	int32 request_ident = 1;
+	string hostDNSName = 2;
+}
+
+message HostCertificateAssignment {
+	int32 request_ident = 1;
+	bytes cert_der = 2;
+	bytes private_key = 3;
+}
+
+message RootCertificateRequest {
+	int64 timestamp = 1;
+}
+
+message RootCertificateAssignment {
+	int64 timestamp = 1;
+	bytes cert_der = 2;
+}
+
+message KeyValues {
+	string key = 1;
+	repeated string values = 2;
+}
+
+message HTTPContentRequest {
+	int32 request_ident = 1;
+	int32 response_ident = 2;
+	string url_path = 3;
+	string url_query = 4;
+	string request_method = 5;
+	string request_host = 6;
+	repeated KeyValues headers = 7;
+	bytes content_body = 8;
+	bool is_complete = 9;
+}
+
+message HTTPContentResponse {
+	int32 response_ident = 1;
+	int32 request_ident = 2;
+	int32 result_state_code = 3;
+	repeated KeyValues headers = 4;
+	bytes content_body = 5;
+	bool is_complete = 6;
+}
