@@ -164,6 +164,7 @@ func (slot *httpContentTransferSlot) serveRegular(w http.ResponseWriter, r *http
 		IsComplete:    reqCompleted,
 	}
 	slot.sendToPeer(req0)
+	log.Printf("TRACE: (serveRegular) emit request [%s / %s]", r.Host, r.URL.Path)
 	select {
 	case resp := <-slot.respCh:
 		if resp == nil {
@@ -639,7 +640,6 @@ func (hnd *HTTPContentFetcher) processContentRequest(srcSerialIdent int, m *qbw1
 		return
 	}
 	go fetchSlot.run(m)
-	return
 }
 
 // ReceiveMessage implement ServiceProvider interface.
