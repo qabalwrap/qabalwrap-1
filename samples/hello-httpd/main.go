@@ -14,6 +14,7 @@ type helloHTTPResponse struct {
 	MessageText string
 	StartAt     time.Time
 	Host        string
+	Path        string
 	Headers     map[string][]string
 }
 
@@ -27,6 +28,7 @@ func (hnd *helloHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		MessageText: hnd.messageText,
 		StartAt:     hnd.startAt,
 		Host:        r.Host,
+		Path:        r.URL.Path,
 		Headers:     r.Header,
 	})
 }
@@ -35,10 +37,10 @@ func parseCommandParam() (listenAt string, messageText string, err error) {
 	flag.StringVar(&listenAt, "listen", ":8080", "address:port to listen")
 	flag.StringVar(&messageText, "message", "Hello", "message to show in response")
 	flag.Parse()
-	if "" == listenAt {
+	if listenAt == "" {
 		return "", "", errors.New("require option `listen` is empty")
 	}
-	if "" == messageText {
+	if messageText == "" {
 		return "", "", errors.New("require option `message` is empty")
 	}
 	return
@@ -54,7 +56,7 @@ func main() {
 		messageText: messageText,
 		startAt:     time.Now(),
 	}
-	log.Print("INFO: start.")
+	log.Printf("INFO: start (listen on: %s).", listenAt)
 	if err = http.ListenAndServe(listenAt, hnd); nil != err {
 		log.Printf("WARN: http.ListenAndServe return no nil result: %v", err)
 	}
