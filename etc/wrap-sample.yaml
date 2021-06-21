@@ -1,0 +1,39 @@
+state-folder: "/tmp/qbwrap-s1"
+message-switch:
+  ident: 'switch-0'
+  dn:
+    c: 'TW'
+    o: 'QabalWrap-1 Development Work'
+  primary: true
+http-servers:
+  - ident: 'http1'
+    listen: ":8080"
+  - ident: 'http2'
+    listen: ":8081"
+access-providers:
+  http-servers:
+    - ident: 'access-g1'
+      channels:
+        - shared-key: 'x'
+          buffer-size: 1024
+      attach-to: 'http1'
+      http-host: 'access1.127-0-0-1.example.io:8080'
+  http-clients:
+    - ident: 'access-c2'
+      shared-key: 'x'
+      buffer-size: 1024
+      target-url: "https://access1.127-0-0-1.sslip.io:8080"
+      host-override: 'access1.127-0-0-1.example.io:8080'
+      channel-index: 0
+      exchange-mode: "b"
+      skip-tls-verify: true
+content-fetchers:
+  - ident: 'fetch-1'
+    target-url: 'http://127.0.0.1:9090/'
+    max-work-links: 32
+content-edges:
+  - ident: 'edge-1'
+    attach-to: 'http3'
+    http-host: 'edge1.127-0-0-1.example.io'
+    fetch-from: 'fetch-1'
+    max-transfer-links: 256

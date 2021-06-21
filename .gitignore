@@ -36,6 +36,8 @@ Icon
 *.out
 .glide/
 
+/etc/wrap-dev*.yaml
+
 /qabalwrapd
 /hello-httpd
 
