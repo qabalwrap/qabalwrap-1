@@ -66,3 +66,8 @@ message HTTPContentResponse {
 	bytes content_body = 5;
 	bool is_complete = 6;
 }
+
+message HeartbeatPingPong {
+	int64 create_timestamp = 1;
+	int64 receive_timestamp = 2;
+}

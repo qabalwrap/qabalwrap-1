@@ -26,6 +26,8 @@ const (
 	MessageContentRootCertificateAssignment
 	MessageContentHTTPContentRequest
 	MessageContentHTTPContentResponse
+	MessageContentHeartbeatPing
+	MessageContentHeartbeatPong
 	MessageContentTypeBoundary
 )
 
@@ -39,6 +41,8 @@ var DefaultMessageHops = [...]int{
 	3, // MessageContentRootCertificateAssignment
 	5, // MessageContentHTTPContentRequest
 	5, // MessageContentHTTPContentResponse
+	1, // MessageContentHeartbeatPing
+	1, // MessageContentHeartbeatPong
 }
 
 // ErrMessageContentTooSmall indicate the message content is too small for content.

@@ -78,12 +78,37 @@ func (d *MessageDispatcher) processKnownServiceIdents(m *RawMessage) {
 	}
 }
 
+func (d *MessageDispatcher) processHeartbeatPing(m *RawMessage) {
+	var hbPing qbw1grpcgen.HeartbeatPingPong
+	if err := m.Unmarshal(&hbPing); nil != err {
+		log.Printf("ERROR: (MessageDispatcher::processHeartbeatPing) cannot unwrap ping: %v", err)
+		return
+	}
+	d.messageSwitch.emitHeartbeatPongMessage(d.relayIndex, hbPing.CreateTimestamp)
+}
+
+func (d *MessageDispatcher) processHeartbeatPong(m *RawMessage) {
+	var hbPong qbw1grpcgen.HeartbeatPingPong
+	if err := m.Unmarshal(&hbPong); nil != err {
+		log.Printf("ERROR: (MessageDispatcher::processHeartbeatPong) cannot unwrap pong: %v", err)
+		return
+	}
+	costNanoSec := time.Now().UnixNano() - hbPong.CreateTimestamp
+	log.Printf("INFO: heartbeat ping-pong cost: %d (ns)", costNanoSec)
+	currentTimestamp := time.Now().Unix()
+	atomic.StoreInt64(&d.messageSwitch.relayLastPingPongHeartbeatTimestamp[d.relayIndex], currentTimestamp)
+}
+
 func (d *MessageDispatcher) processPeerMessage(m *RawMessage) {
 	switch m.MessageContentType() {
 	case MessageContentKnownServiceIdents:
 		d.processKnownServiceIdents(m)
 	case MessageContentAllocateServiceIdentsRequest:
 		d.messageSwitch.processAllocateServiceIdentsRequest(m)
+	case MessageContentHeartbeatPing:
+		d.processHeartbeatPing(m)
+	case MessageContentHeartbeatPong:
+		d.processHeartbeatPong(m)
 	}
 }
 
@@ -110,7 +135,8 @@ type MessageSwitch struct {
 	serviceRefsByTextIdent   map[string]*ServiceReference
 	unassignServiceRefs      []*ServiceReference
 
-	lastPrimaryLinkCheckTimestamp int64
+	lastPrimaryLinkCheckTimestamp   int64
+	lastRelayPingPongCheckTimestamp int64
 
 	lckKnownServiceIdents     sync.Mutex
 	messageKnownServiceIdents *RawMessage
@@ -123,6 +149,7 @@ type MessageSwitch struct {
 	relayProviders                      []RelayProvider
 	relayKnownServiceIdentsDigests      []md5digest.MD5Digest
 	relayLastDispatchHeartbeatTimestamp []int64
+	relayLastPingPongHeartbeatTimestamp []int64
 
 	certificateManager *CertificateManager
 	certRequestQueue   CertificateRequestQueue
@@ -610,6 +637,7 @@ func (s *MessageSwitch) AddRelayProvider(relayProvider RelayProvider) {
 	s.relayProviders = append(s.relayProviders, relayProvider)
 	s.relayKnownServiceIdentsDigests = append(s.relayKnownServiceIdentsDigests, md5digest.MD5Digest{})
 	s.relayLastDispatchHeartbeatTimestamp = append(s.relayLastDispatchHeartbeatTimestamp, 0)
+	s.relayLastPingPongHeartbeatTimestamp = append(s.relayLastPingPongHeartbeatTimestamp, 0)
 	relayProvider.SetMessageDispatcher(dispatcher)
 }
 
@@ -712,6 +740,39 @@ func (s *MessageSwitch) emitKnownServiceIdentsMessage(relayIndex int) (err error
 	s.lckRelayProviders.RLock()
 	defer s.lckRelayProviders.RUnlock()
 	err = s.relayProviders[relayIndex].EmitMessage(s.GetKnownServiceIdentsMessage())
+	return
+}
+
+func (s *MessageSwitch) emitHeartbeatPingMessage(relayIndex int) (err error) {
+	aux := qbw1grpcgen.HeartbeatPingPong{
+		CreateTimestamp: time.Now().UnixNano(),
+	}
+	buf, err := proto.Marshal(&aux)
+	if nil != err {
+		log.Printf("ERROR: (emitHeartbeatPingMessage) cannot marshal heartbeat ping: %v", err)
+		return
+	}
+	m := NewPlainRawMessage(AccessProviderPeerServiceIdent, AccessProviderPeerServiceIdent, MessageContentHeartbeatPing, buf)
+	s.lckRelayProviders.RLock()
+	defer s.lckRelayProviders.RUnlock()
+	err = s.relayProviders[relayIndex].EmitMessage(m)
+	return
+}
+
+func (s *MessageSwitch) emitHeartbeatPongMessage(relayIndex int, createTimestamp int64) (err error) {
+	aux := qbw1grpcgen.HeartbeatPingPong{
+		CreateTimestamp:  createTimestamp,
+		ReceiveTimestamp: time.Now().UnixNano(),
+	}
+	buf, err := proto.Marshal(&aux)
+	if nil != err {
+		log.Printf("ERROR: (emitHeartbeatPongMessage) cannot marshal heartbeat pong: %v", err)
+		return
+	}
+	m := NewPlainRawMessage(AccessProviderPeerServiceIdent, AccessProviderPeerServiceIdent, MessageContentHeartbeatPong, buf)
+	s.lckRelayProviders.RLock()
+	defer s.lckRelayProviders.RUnlock()
+	err = s.relayProviders[relayIndex].EmitMessage(m)
 	return
 }
 
@@ -1053,6 +1114,15 @@ func (s *MessageSwitch) processRootCertificateAssignment(m *RawMessage) {
 	}
 }
 
+func (s *MessageSwitch) clearRelayHopCounts(relayIndex int) {
+	s.lckServiceRefs.RLock()
+	defer s.lckServiceRefs.RUnlock()
+	for _, ref := range s.serviceRefsBySerialIdent[1:] {
+		ref.UpdateRelayHopCount(s.relayProviders, relayIndex, maxLinkHopCount)
+	}
+	log.Printf("INFO: (clearRelayHopCounts) finishing hop count clear (relay-index=%d).", relayIndex)
+}
+
 func (s *MessageSwitch) bindMessageSenders(srvRefs []*ServiceReference) {
 	if len(srvRefs) == 0 {
 		return
@@ -1137,6 +1207,32 @@ func (s *MessageSwitch) onPrimaryLinkEstablished(waitGroup *sync.WaitGroup) {
 	}
 }
 
+func (s *MessageSwitch) doRelayPingEmits() {
+	if (time.Now().Unix() - s.lastRelayPingPongCheckTimestamp) < 180 {
+		log.Printf("INFO: (doRelayPingEmits) skip (%d)", (time.Now().Unix() - s.lastRelayPingPongCheckTimestamp))
+		return
+	}
+	s.lastRelayPingPongCheckTimestamp = time.Now().Unix()
+	relayBound := len(s.relayProviders)
+	log.Printf("INFO: (doRelayPingEmits) emit checks (%d)", relayBound)
+	currentTimestamp := time.Now().Unix()
+	haveChange := false
+	for relayIndex := 0; relayIndex < relayBound; relayIndex++ {
+		lastPingPongTimestamp := atomic.LoadInt64(&s.relayLastPingPongHeartbeatTimestamp[relayIndex])
+		if (lastPingPongTimestamp != 0) && ((currentTimestamp - lastPingPongTimestamp) > 600) {
+			log.Printf("WARN: (doRelayPingEmits) lost relay and start clear hop count: relay-index=%d", relayIndex)
+			s.clearRelayHopCounts(relayIndex)
+			haveChange = true
+			atomic.StoreInt64(&s.relayLastPingPongHeartbeatTimestamp[relayIndex], 0)
+		}
+		s.emitHeartbeatPingMessage(relayIndex)
+	}
+	if haveChange {
+		s.rebuildKnownServiceIdentsMessage()
+		s.broadcastKnownServiceIdentsMessage()
+	}
+}
+
 func (s *MessageSwitch) runPeriodicalWorks(waitGroup *sync.WaitGroup, ctx context.Context) {
 	defer waitGroup.Done()
 	ticker := time.NewTicker(messageSwitchPeriodWorkCycleTime)
@@ -1151,6 +1247,7 @@ func (s *MessageSwitch) runPeriodicalWorks(waitGroup *sync.WaitGroup, ctx contex
 			if s.doPrimaryLinkCheck() {
 				s.onPrimaryLinkEstablished(waitGroup)
 			}
+			s.doRelayPingEmits()
 		}
 	}
 }
