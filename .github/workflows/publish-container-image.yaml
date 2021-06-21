@@ -23,5 +23,5 @@ jobs:
         with:
           push: true
           tags: |
-            ghcr.io/qabalwrap/qabalwrap-1:${{ github.sha }}
-            ghcr.io/qabalwrap/qabalwrap-1:${{ github.ref }}
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
+            ghcr.io/${{ github.repository }}:build-${{ github.run_number }}
