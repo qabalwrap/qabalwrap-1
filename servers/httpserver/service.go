@@ -1,47 +1,40 @@
-package qabalwrap
+package httpserver
 
 import (
 	"context"
 	"crypto/tls"
 	"log"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
+
+	qabalwrap "github.com/qabalwrap/qabalwrap-1"
 )
 
-func normalizeHTTPHost(host string) string {
-	i := len(host)
-	b := i - 6
-	if b < 0 {
-		b = 0
-	}
-	for i--; i >= b; i-- {
-		if host[i] == ':' {
-			return strings.ToLower(host[:i])
-		}
-	}
-	return strings.ToLower(host)
-}
+// Service implement HTTP server service.
+type Service struct {
+	qabalwrap.ServiceBase
 
-type HTTPServerService struct {
-	serverInst *http.Server
+	serverInst    *http.Server
+	serverRunning bool
 
 	listenAddr string
 
 	hostHandlers  map[string]http.Handler
 	maxHostLength int
+
+	tlsCerts []tls.Certificate
 }
 
-func NewHTTPServerService(listenAddr string) (s *HTTPServerService) {
-	s = &HTTPServerService{
+func NewService(listenAddr string) (s *Service) {
+	s = &Service{
 		listenAddr:   listenAddr,
 		hostHandlers: make(map[string]http.Handler),
 	}
 	return
 }
 
-func (s *HTTPServerService) AddHostHandler(host string, handler http.Handler) {
+func (s *Service) AddHostHandler(host string, handler http.Handler) {
 	host = normalizeHTTPHost(host)
 	if hostLen := len(host); hostLen > s.maxHostLength {
 		s.maxHostLength = hostLen
@@ -49,7 +42,7 @@ func (s *HTTPServerService) AddHostHandler(host string, handler http.Handler) {
 	s.hostHandlers[host] = handler
 }
 
-func (s *HTTPServerService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	host := normalizeHTTPHost(r.Host)
 	// TODO: logging access target
 	hnd, ok := s.hostHandlers[host]
@@ -61,17 +54,27 @@ func (s *HTTPServerService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // ReceiveMessage implement ServiceProvider interface.
-func (s *HTTPServerService) ReceiveMessage(rawMessage *RawMessage) (err error) {
-	log.Printf("WARN: (HTTPServerService::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", rawMessage.SourceServiceIdent, rawMessage.DestinationServiceIdent, rawMessage.MessageContentType())
+func (s *Service) ReceiveMessage(envelopedMessage *qabalwrap.EnvelopedMessage) (err error) {
+	log.Printf("WARN: (HTTPServerService::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", envelopedMessage.SourceServiceIdent, envelopedMessage.DestinationServiceIdent, envelopedMessage.MessageContentType())
 	return
 }
 
 // SetMessageSender implement ServiceProvider interface.
-func (s *HTTPServerService) SetMessageSender(messageSender *MessageSender) {
+func (s *Service) SetMessageSender(messageSender *qabalwrap.MessageSender) {
 	// TODO: implements
 }
 
-func (s *HTTPServerService) httpServerListenAndServeTLS(waitGroup *sync.WaitGroup) {
+// UpdateHostTLSCertificates trigger host TLS update of service.
+func (s *Service) UpdateHostTLSCertificates(waitGroup *sync.WaitGroup, tlsCerts []tls.Certificate) (err error) {
+	s.tlsCerts = tlsCerts
+	if s.serverRunning {
+		s.Stop()
+		err = s.startImpl(waitGroup)
+	}
+	return
+}
+
+func (s *Service) httpServerListenAndServeTLS(waitGroup *sync.WaitGroup) {
 	defer waitGroup.Done()
 	log.Printf("INFO: (HTTPServerService::httpServerListenAndServeTLS) listen to: %s", s.listenAddr)
 	if err := s.serverInst.ListenAndServeTLS("", ""); nil != err {
@@ -80,16 +83,17 @@ func (s *HTTPServerService) httpServerListenAndServeTLS(waitGroup *sync.WaitGrou
 	s.serverInst = nil
 }
 
-func (s *HTTPServerService) Start(waitGroup *sync.WaitGroup, certProvider CertificateProvider) (err error) {
+func (s *Service) Setup(certProvider qabalwrap.CertificateProvider) (err error) {
 	hostNames := make([]string, 0, len(s.hostHandlers))
 	for hostName := range s.hostHandlers {
 		hostNames = append(hostNames, hostName)
 	}
-	tlsCerts, err := certProvider.GetHostTLSCertificates(hostNames)
-	if nil != err {
-		return
-	}
-	tlsCfg := &tls.Config{Certificates: tlsCerts}
+	_, err = certProvider.RegisterHostTLSCertificates(hostNames, s)
+	return
+}
+
+func (s *Service) startImpl(waitGroup *sync.WaitGroup) (err error) {
+	tlsCfg := &tls.Config{Certificates: s.tlsCerts}
 	s.serverInst = &http.Server{
 		Addr:      s.listenAddr,
 		Handler:   s,
@@ -100,7 +104,11 @@ func (s *HTTPServerService) Start(waitGroup *sync.WaitGroup, certProvider Certif
 	return
 }
 
-func (s *HTTPServerService) Stop() {
+func (s *Service) Start(ctx context.Context, waitGroup *sync.WaitGroup) (err error) {
+	return s.startImpl(waitGroup)
+}
+
+func (s *Service) Stop() {
 	if s.serverInst == nil {
 		log.Printf("INFO: (HTTPServerService::Stop) server instance not exist (listen-address: %s)", s.listenAddr)
 		return
