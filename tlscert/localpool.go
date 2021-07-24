@@ -131,13 +131,13 @@ func (lc *localCerts) setHostKeyPair(hostDNSName string, hostCertKeyPair *Certif
 	lc.HostCertKeyPairs[hostDNSName] = hostCertKeyPair
 }
 
-// haveRootCertificate check if root certificate existed.
-func (lc *localCerts) haveRootCertificate() (rootCertExisted bool) {
+// HaveRootCertificate check if root certificate existed.
+func (lc *localCerts) HaveRootCertificate() (rootCertExisted bool) {
 	return (lc.RootCertKeyPair != nil) && (lc.RootCertKeyPair.Certificate.NotAfter.After(time.Now()))
 }
 
-// updateRootCertificate set root certificate to given one.
-func (lc *localCerts) updateRootCertificate(externalRootCert *CertificateKeyPair) (changed bool, err error) {
+// updateRootCert set root certificate to given one.
+func (lc *localCerts) updateRootCert(externalRootCert *CertificateKeyPair) (changed bool, err error) {
 	if lc.RootCertKeyPair != nil {
 		if lc.RootCertKeyPair.Certificate.Equal(externalRootCert.Certificate) {
 			return

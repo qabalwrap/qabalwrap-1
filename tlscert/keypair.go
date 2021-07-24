@@ -34,6 +34,11 @@ func newCertificateKeyPair(certDERBytes []byte, privateKey *rsa.PrivateKey) (k *
 	return
 }
 
+// NewCertificateKeyPairFromQBw1RootCertificateAssignment create certificate key pair from root certificate assignment.
+func NewCertificateKeyPairFromQBw1RootCertificateAssignment(a *qbw1grpcgen.RootCertificateAssignment) (k *CertificateKeyPair, err error) {
+	return newCertificateKeyPair(a.CertDer, nil)
+}
+
 func newCertificateKeyPairFromQBw1HostCertificateAssignment(a *qbw1grpcgen.HostCertificateAssignment) (k *CertificateKeyPair, err error) {
 	certDERBytes := a.CertDer
 	certInst, err := x509.ParseCertificate(certDERBytes)

@@ -12,4 +12,4 @@ const (
 	selfSignedCertValidDuration = time.Hour * 8
 )
 
-const certificateRequestExpireSeconds = 180
+// const certificateRequestExpireSeconds = 180

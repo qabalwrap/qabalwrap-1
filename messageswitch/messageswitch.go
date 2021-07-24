@@ -10,6 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	qabalwrap "github.com/qabalwrap/qabalwrap-1"
+	qbw1grpcgen "github.com/qabalwrap/qabalwrap-1/gen/qbw1grpcgen"
 	qw1tlscert "github.com/qabalwrap/qabalwrap-1/tlscert"
 )
 
@@ -33,6 +34,8 @@ type MessageSwitch struct {
 
 	notifyPeerKnownServiceIdents  chan *knownServiceIdentsNotify
 	allocateServiceIdentsRequests chan *ServiceReference
+	rootCertificateRequests       chan int
+	rootCertificateAssignment     chan *qw1tlscert.CertificateKeyPair
 }
 
 // NewMessageSwitch create new instance of MessageSwitch.
@@ -43,6 +46,8 @@ func NewMessageSwitch(
 	aux := &MessageSwitch{
 		notifyPeerKnownServiceIdents:  make(chan *knownServiceIdentsNotify, 2),
 		allocateServiceIdentsRequests: make(chan *ServiceReference, 2),
+		rootCertificateRequests:       make(chan int, 2),
+		rootCertificateAssignment:     make(chan *qw1tlscert.CertificateKeyPair, 1),
 	}
 	if err = aux.tlsCertProvider.Init(dnCountry, dnOrganization, stateStore, primarySwitch); nil != err {
 		log.Printf("ERROR: (NewMessageSwitch) init TLS certificate provider failed: %v", err)
@@ -199,7 +204,7 @@ func (s *MessageSwitch) emitAllocateServiceIdentsRequest() {
 	if s.primarySwitch {
 		return
 	}
-	primaryLink := s.crossBar.getServiceConnectBySerial(0)
+	primaryLink := s.crossBar.getServiceConnectBySerial(qabalwrap.PrimaryMessageSwitchServiceIdent)
 	if (primaryLink == nil) || (!primaryLink.linkAvailable()) {
 		log.Print("INFO: (MessageSwitch::requestServiceSerialAssignment) cannot reach primary switch.")
 		return
@@ -216,6 +221,29 @@ func (s *MessageSwitch) emitAllocateServiceIdentsRequest() {
 	}
 	if err = primaryLink.emitMessage(m); nil != err {
 		log.Printf("ERROR: (MessageSwitch::requestServiceSerialAssignment) cannot emit enveloped message: %v", err)
+	}
+}
+
+func (s *MessageSwitch) emitRootCertificateRequest() {
+	if s.tlsCertProvider.HaveRootCertificate() {
+		return
+	}
+	if primaryLink := s.crossBar.getServiceConnectBySerial(qabalwrap.PrimaryMessageSwitchServiceIdent); (primaryLink == nil) || (!primaryLink.linkAvailable()) {
+		log.Print("INFO: (MessageSwitch::emitRootCertificateRequest) cannot reach primary switch.")
+		return
+	}
+	reqMsg := &qbw1grpcgen.RootCertificateRequest{
+		Timestamp: time.Now().Unix(),
+	}
+	m, err := qabalwrap.MarshalIntoClearEnvelopedMessage(
+		s.localServiceRef.SerialIdent, qabalwrap.PrimaryMessageSwitchServiceIdent,
+		qabalwrap.MessageContentRootCertificateRequest, reqMsg)
+	if nil != err {
+		log.Printf("ERROR: (MessageSwitch::emitRootCertificateRequest) cannot create enveloped message: %v", err)
+		return
+	}
+	if err = s.forwardClearEnvelopedMessage(m); nil != err {
+		log.Printf("ERROR: (MessageSwitch::emitRootCertificateRequest) cannot emit enveloped message: %v", err)
 	}
 }
 
@@ -236,10 +264,15 @@ func (s *MessageSwitch) maintenanceWorks(ctx context.Context, waitGroup *sync.Wa
 		case allocateServiceRef := <-s.allocateServiceIdentsRequests:
 			handleAllocateServiceIdentsRequest(s, allocateServiceRef)
 			hndKnownServiceIdentsNotify.checkChanges()
+		case rootCertReqSerialIdent := <-s.rootCertificateRequests:
+			handleRootCertificateRequest(s, rootCertReqSerialIdent)
+		case rootCertKeyPair := <-s.rootCertificateAssignment:
+			handleRootCertificateAssignment(waitGroup, s, rootCertKeyPair)
 		case <-ticker.C:
 			lostedRelay := s.emitRelayHeartbeat()
 			s.crossBar.relayLinksLosted(lostedRelay)
 			s.emitAllocateServiceIdentsRequest()
+			s.emitRootCertificateRequest()
 		case <-ctx.Done():
 			running = false
 			log.Print("INFO: (MessageSwitch::maintenanceWorks) get stop notice.")
@@ -313,6 +346,12 @@ func (s *MessageSwitch) ReceiveMessage(m *qabalwrap.EnvelopedMessage) (err error
 	case qabalwrap.MessageContentAllocateServiceIdentsRequest:
 		if err = queueAllocateServiceIdentsRequest(s, m); nil != err {
 			log.Printf("ERROR: (MessageSwitch::ReceiveMessage) queue allocate service ident request failed: %v", err)
+		}
+	case qabalwrap.MessageContentRootCertificateRequest:
+		queueRootCertificateRequest(s, m)
+	case qabalwrap.MessageContentRootCertificateAssignment:
+		if err = queueRootCertificateAssignment(s, m); nil != err {
+			log.Printf("ERROR: (MessageSwitch::ReceiveMessage) queue root cert assignment failed: %v", err)
 		}
 	}
 	return
