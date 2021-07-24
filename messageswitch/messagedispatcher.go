@@ -141,7 +141,7 @@ func (d *messageDispatcher) processPeerAllocateServiceIdentsRequest(m *qabalwrap
 		return
 	}
 	m.SourceServiceIdent = d.messageSwitch.localServiceRef.SerialIdent
-	m.DestinationServiceIdent = 0
+	m.DestinationServiceIdent = qabalwrap.PrimaryMessageSwitchServiceIdent
 	if err := d.messageSwitch.forwardClearEnvelopedMessage(m); nil != err {
 		log.Printf("ERROR: (messageDispatcher::processPeerAllocateServiceIdentsRequest) forward failed: %v", err)
 	}
