@@ -86,3 +86,10 @@ func (p *Provider) RegisterHostTLSCertificates(
 	p.hostTLSCertSubscriptions = append(p.hostTLSCertSubscriptions, subscriptionRec)
 	return
 }
+
+// GetHostTLSCertificates is subject to remove.
+// TODO: remove.
+func (p *Provider) GetHostTLSCertificates(hostNames []string) (tlsCerts []tls.Certificate, err error) {
+	err = qabalwrap.ErrDeprecated
+	return
+}
