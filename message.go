@@ -48,22 +48,22 @@ var DefaultMessageHops = [...]int{
 // ErrMessageContentTooSmall indicate the message content is too small for content.
 var ErrMessageContentTooSmall = errors.New("message content too small")
 
-// RawMessage contain message in clear text.
-type RawMessage struct {
+// EnvelopedMessage contain message in byte slice.
+type EnvelopedMessage struct {
 	SourceServiceIdent      int
 	DestinationServiceIdent int
 	RemainHops              int
 	MessageContent          []byte
 }
 
-// NewPlainRawMessage create message with message content.
-func NewPlainRawMessage(
+// NewClearEnvelopedMessage create message with message content.
+func NewClearEnvelopedMessage(
 	sourceServiceIdent, destServiceIdent int,
-	messageContentType MessageContentType, messageContent []byte) (m *RawMessage) {
+	messageContentType MessageContentType, messageContent []byte) (m *EnvelopedMessage) {
 	buf := make([]byte, 2+len(messageContent))
 	binary.LittleEndian.PutUint16(buf, uint16(messageContentType))
 	copy(buf[2:], messageContent)
-	m = &RawMessage{
+	m = &EnvelopedMessage{
 		SourceServiceIdent:      sourceServiceIdent,
 		DestinationServiceIdent: destServiceIdent,
 		RemainHops:              DefaultMessageHops[messageContentType],
@@ -72,15 +72,26 @@ func NewPlainRawMessage(
 	return
 }
 
-func MarshalIntoEncryptedRawMessage(
+func MarshalIntoClearEnvelopedMessage(
 	sourceServiceIdent, destServiceIdent int,
-	sharedEncryptKey *[32]byte,
-	messageContentType MessageContentType, messageRef proto.Message) (m *RawMessage, err error) {
+	messageContentType MessageContentType, messageRef proto.Message) (m *EnvelopedMessage, err error) {
 	aux, err := proto.Marshal(messageRef)
 	if nil != err {
 		return
 	}
-	rawMsg := NewPlainRawMessage(sourceServiceIdent, destServiceIdent, messageContentType, aux)
+	m = NewClearEnvelopedMessage(sourceServiceIdent, destServiceIdent, messageContentType, aux)
+	return
+}
+
+func MarshalIntoEncryptedEnvelopedMessage(
+	sourceServiceIdent, destServiceIdent int,
+	sharedEncryptKey *[32]byte,
+	messageContentType MessageContentType, messageRef proto.Message) (m *EnvelopedMessage, err error) {
+	aux, err := proto.Marshal(messageRef)
+	if nil != err {
+		return
+	}
+	rawMsg := NewClearEnvelopedMessage(sourceServiceIdent, destServiceIdent, messageContentType, aux)
 	aux = nil
 	if err = rawMsg.Encrypt(sharedEncryptKey); nil != err {
 		return
@@ -89,8 +100,8 @@ func MarshalIntoEncryptedRawMessage(
 	return
 }
 
-// UnpackRawMessage fetch RawMessage from given buffer and return remain buffer.
-func UnpackRawMessage(b []byte) (m *RawMessage, remainBytes []byte, err error) {
+// UnpackEnvelopedMessage fetch RawMessage from given buffer and return remain buffer.
+func UnpackEnvelopedMessage(b []byte) (m *EnvelopedMessage, remainBytes []byte, err error) {
 	if len(b) < (4 + 6) {
 		return
 	}
@@ -110,7 +121,7 @@ func UnpackRawMessage(b []byte) (m *RawMessage, remainBytes []byte, err error) {
 	if len(b) > 10+contentSize+4+6 {
 		remainBytes = b[10+contentSize:]
 	}
-	m = &RawMessage{
+	m = &EnvelopedMessage{
 		SourceServiceIdent:      srcServiceIdent,
 		DestinationServiceIdent: dstServiceIdent,
 		RemainHops:              remainHops,
@@ -120,7 +131,7 @@ func UnpackRawMessage(b []byte) (m *RawMessage, remainBytes []byte, err error) {
 }
 
 // Pack append binary form of RawMessage into given b.
-func (m *RawMessage) Pack(b []byte) (result []byte) {
+func (m *EnvelopedMessage) Pack(b []byte) (result []byte) {
 	buf := make([]byte, 4+6)
 	binary.LittleEndian.PutUint32(buf, uint32(len(m.MessageContent)))
 	binary.LittleEndian.PutUint16(buf[4:], uint16(m.SourceServiceIdent))
@@ -131,12 +142,12 @@ func (m *RawMessage) Pack(b []byte) (result []byte) {
 }
 
 // PackedLen return bytes resulted by Pack().
-func (m *RawMessage) PackedLen() int {
+func (m *EnvelopedMessage) PackedLen() int {
 	return 4 + 6 + len(m.MessageContent)
 }
 
 // Encrypt message content.
-func (m *RawMessage) Encrypt(sharedEncryptKey *[32]byte) (err error) {
+func (m *EnvelopedMessage) Encrypt(sharedEncryptKey *[32]byte) (err error) {
 	aux := make([]byte, 24, 24+len(m.MessageContent)+box.Overhead)
 	var nonce [24]byte
 	if _, err = io.ReadFull(rand.Reader, nonce[:]); nil != err {
@@ -149,7 +160,7 @@ func (m *RawMessage) Encrypt(sharedEncryptKey *[32]byte) (err error) {
 }
 
 // Decrypt message content.
-func (m *RawMessage) Decrypt(sharedDecryptKey *[32]byte) (err error) {
+func (m *EnvelopedMessage) Decrypt(sharedDecryptKey *[32]byte) (err error) {
 	if len(m.MessageContent) <= 24 {
 		err = fmt.Errorf("unexpect raw message content size: %d", len(m.MessageContent))
 		return
@@ -167,7 +178,7 @@ func (m *RawMessage) Decrypt(sharedDecryptKey *[32]byte) (err error) {
 
 // MessageContentType read type code from message content.
 // CAUTION: Must decrypt message before invoke this method if message is encrypted.
-func (m *RawMessage) MessageContentType() (t MessageContentType) {
+func (m *EnvelopedMessage) MessageContentType() (t MessageContentType) {
 	if len(m.MessageContent) < 2 {
 		return MessageContentUnknown
 	}
@@ -182,7 +193,7 @@ func (m *RawMessage) MessageContentType() (t MessageContentType) {
 // CAUTION: Must decrypt message before invoke this method if message is encrypted.
 // CAUTION: Message size is not checked in this method.
 // CAUTION: Do NOT call this method if .MessageContentType() does not return known type code.
-func (m *RawMessage) Unmarshal(ref proto.Message) (err error) {
+func (m *EnvelopedMessage) Unmarshal(ref proto.Message) (err error) {
 	// *** Ignoring size check. Caller should check message type with .MessageContentType()
 	// *** before invoke this method.
 	/*
@@ -197,7 +208,7 @@ func (m *RawMessage) Unmarshal(ref proto.Message) (err error) {
 // CAUTION: Must decrypt message before invoke this method if message is encrypted.
 // CAUTION: Message size is not checked in this method.
 // CAUTION: Do NOT call this method if .MessageContentType() does not return known type code.
-func (m *RawMessage) Digest(d *md5digest.MD5Digest) {
+func (m *EnvelopedMessage) Digest(d *md5digest.MD5Digest) {
 	if len(m.MessageContent) < 2 {
 		return
 	}
