@@ -22,14 +22,15 @@ message AllocateServiceIdentsRequest {
 }
 
 message HostCertificateRequest {
-	int32 request_ident = 1;
-	string hostDNSName = 2;
+	string hostDNSName = 1;
+	int32 request_ident = 2;
 }
 
 message HostCertificateAssignment {
-	int32 request_ident = 1;
+	string hostDNSName = 1;
 	bytes cert_der = 2;
 	bytes private_key = 3;
+	int32 request_ident = 4;
 }
 
 message RootCertificateRequest {
