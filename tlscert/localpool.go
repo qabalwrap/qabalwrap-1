@@ -20,6 +20,8 @@ type localCerts struct {
 	CurrentSerialNumber int64                          `json:"current_serial"`
 	RootCertKeyPair     *CertificateKeyPair            `json:"root_ca"`
 	HostCertKeyPairs    map[string]*CertificateKeyPair `json:"host_certs"`
+
+	lastModifyTimestamp int64
 }
 
 func (lc *localCerts) init(dnCountry, dnOrganization string) {
@@ -36,7 +38,18 @@ func (lc *localCerts) load(stateStore *qabalwrap.StateStore) (ok bool, err error
 }
 
 func (lc *localCerts) save(stateStore *qabalwrap.StateStore) (err error) {
-	return stateStore.Marshal(localCertsContentIdent, lc)
+	if err = stateStore.Marshal(localCertsContentIdent, lc); nil != err {
+		return
+	}
+	lc.lastModifyTimestamp = 0
+	return
+}
+
+func (lc *localCerts) saveWhenModified(stateStore *qabalwrap.StateStore) (err error) {
+	if lc.lastModifyTimestamp == 0 {
+		return
+	}
+	return lc.save(stateStore)
 }
 
 func (lc *localCerts) allocateSerialNumber() int64 {
@@ -80,6 +93,7 @@ func (lc *localCerts) setupRootCA() (err error) {
 	if lc.RootCertKeyPair, err = newCertificateKeyPair(certBytes, priv); nil != err {
 		log.Printf("ERROR: cannot unpack certificate for root CA: %v", err)
 	}
+	lc.lastModifyTimestamp = time.Now().Unix()
 	return
 }
 
@@ -124,6 +138,7 @@ func (lc *localCerts) setupHostKeyPair(hostDNSName string) (err error) {
 		return
 	}
 	lc.HostCertKeyPairs[hostDNSName] = hostCert
+	lc.lastModifyTimestamp = time.Now().Unix()
 	return
 }
 
@@ -174,5 +189,20 @@ func (lc *localCerts) getHostKeyPair(hostDNSName string) (certKeyPair *Certifica
 		return
 	}
 	certKeyPair = hostCertKeyPair
+	return
+}
+
+// prepareHostKeyPair fetch host certificate key pair or setup key pair if setupWhenUnavailable is enabled.
+func (lc *localCerts) prepareHostKeyPair(hostDNSName string, setupWhenUnavailable bool) (certKeyPair *CertificateKeyPair, err error) {
+	if certKeyPair = lc.getHostKeyPair(hostDNSName); certKeyPair != nil {
+		return
+	}
+	if !setupWhenUnavailable {
+		return
+	}
+	if err = lc.setupHostKeyPair(hostDNSName); nil != err {
+		return
+	}
+	certKeyPair = lc.getHostKeyPair(hostDNSName)
 	return
 }

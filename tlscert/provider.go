@@ -49,15 +49,19 @@ func (p *Provider) updateAllHostTLSCert(waitGroup *sync.WaitGroup) (err error) {
 		tlsCerts := make([]tls.Certificate, 0, len(subscriptionRec.hostNameSerials))
 		for hostN := range subscriptionRec.hostNameSerials {
 			var cert *tls.Certificate
-			if keyPair := p.localCerts.getHostKeyPair(hostN); keyPair == nil {
+			var keyPair *CertificateKeyPair
+			if keyPair, err = p.localCerts.prepareHostKeyPair(hostN, p.primaryTLSCertProvider); nil != err {
+				log.Printf("ERROR: (updateAllHostTLSCert) prepare TLS certificate failed [host=%s]: %v", hostN, err)
+				return
+			} else if keyPair != nil {
+				cert = keyPair.TLSCertificate(p.RootCertKeyPair)
+				subscriptionRec.hostNameSerials[hostN] = keyPair.Certificate.SerialNumber.Int64()
+			} else {
 				if cert, err = MakeSelfSignedHostTLSCertificate(p.Country, p.Organization, hostN); nil != err {
 					log.Printf("ERROR: (updateAllHostTLSCert) generate self-signed TLS certificate failed [host=%s]: %v", hostN, err)
 					return
 				}
 				subscriptionRec.hostNameSerials[hostN] = 0
-			} else {
-				cert = keyPair.TLSCertificate(p.RootCertKeyPair)
-				subscriptionRec.hostNameSerials[hostN] = keyPair.Certificate.SerialNumber.Int64()
 			}
 			tlsCerts = append(tlsCerts, *cert)
 		}
@@ -65,6 +69,9 @@ func (p *Provider) updateAllHostTLSCert(waitGroup *sync.WaitGroup) (err error) {
 			log.Printf("ERROR: (updateAllHostTLSCert) update certificate complete: %v", err)
 			return
 		}
+	}
+	if err = p.saveWhenModified(p.stateStore); nil != err {
+		log.Printf("ERROR: (updateAllHostTLSCert) cannot save certificate pool: %v", err)
 	}
 	return
 }
@@ -89,6 +96,24 @@ func (p *Provider) UpdateRootCertificate(waitGroup *sync.WaitGroup, certKeyPair 
 	}
 	if err = p.updateAllHostTLSCert(waitGroup); nil != err {
 		log.Printf("ERROR: (UpdateRootCertificate) update all host TLS cert failed: %v", err)
+	}
+	return
+}
+
+// CollectSelfSignedHosts get hostnames with self-signed certificate issued.
+func (p *Provider) CollectSelfSignedHosts() (hostNames []string) {
+	c := make(map[string]struct{})
+	for _, subscriptionRec := range p.hostTLSCertSubscriptions {
+		for hostN, certSn := range subscriptionRec.hostNameSerials {
+			if certSn != 0 {
+				continue
+			}
+			c[hostN] = struct{}{}
+		}
+	}
+	hostNames = make([]string, 0, len(c))
+	for hostN := range c {
+		hostNames = append(hostNames, hostN)
 	}
 	return
 }
