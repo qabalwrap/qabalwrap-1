@@ -39,7 +39,8 @@ func NewCertificateKeyPairFromQBw1RootCertificateAssignment(a *qbw1grpcgen.RootC
 	return newCertificateKeyPair(a.CertDer, nil)
 }
 
-func newCertificateKeyPairFromQBw1HostCertificateAssignment(a *qbw1grpcgen.HostCertificateAssignment) (k *CertificateKeyPair, err error) {
+// NewCertificateKeyPairFromQBw1HostCertificateAssignment create certificate key pair from HostCertificateAssignment.
+func NewCertificateKeyPairFromQBw1HostCertificateAssignment(a *qbw1grpcgen.HostCertificateAssignment) (k *CertificateKeyPair, err error) {
 	certDERBytes := a.CertDer
 	certInst, err := x509.ParseCertificate(certDERBytes)
 	if nil != err {
@@ -103,15 +104,15 @@ func (k *CertificateKeyPair) UnmarshalJSON(data []byte) (err error) {
 	return
 }
 
-func (k *CertificateKeyPair) QBw1HostCertificateAssignment(requestIdent int32) (resp *qbw1grpcgen.HostCertificateAssignment) {
+func (k *CertificateKeyPair) QBw1HostCertificateAssignment(hostName string) (resp *qbw1grpcgen.HostCertificateAssignment) {
 	var privateKeyDER []byte
 	if k.PrivateKey != nil {
 		privateKeyDER = x509.MarshalPKCS1PrivateKey(k.PrivateKey)
 	}
 	resp = &qbw1grpcgen.HostCertificateAssignment{
-		RequestIdent: requestIdent,
-		CertDer:      k.CertDERBytes,
-		PrivateKey:   privateKeyDER,
+		HostDNSName: hostName,
+		CertDer:     k.CertDERBytes,
+		PrivateKey:  privateKeyDER,
 	}
 	return
 }

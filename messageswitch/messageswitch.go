@@ -36,6 +36,8 @@ type MessageSwitch struct {
 	allocateServiceIdentsRequests chan *ServiceReference
 	rootCertificateRequests       chan int
 	rootCertificateAssignment     chan *qw1tlscert.CertificateKeyPair
+	hostCertificateRequests       chan *hostCertRequest
+	hostCertificateAssignments    chan *hostCertAssignment
 }
 
 // NewMessageSwitch create new instance of MessageSwitch.
@@ -48,6 +50,8 @@ func NewMessageSwitch(
 		allocateServiceIdentsRequests: make(chan *ServiceReference, 2),
 		rootCertificateRequests:       make(chan int, 2),
 		rootCertificateAssignment:     make(chan *qw1tlscert.CertificateKeyPair, 1),
+		hostCertificateRequests:       make(chan *hostCertRequest, 8),
+		hostCertificateAssignments:    make(chan *hostCertAssignment, 8),
 	}
 	if err = aux.tlsCertProvider.Init(dnCountry, dnOrganization, stateStore, primarySwitch); nil != err {
 		log.Printf("ERROR: (NewMessageSwitch) init TLS certificate provider failed: %v", err)
@@ -247,6 +251,28 @@ func (s *MessageSwitch) emitRootCertificateRequest() {
 	}
 }
 
+func (s *MessageSwitch) emitHostCertificateRequests() {
+	hostNames := s.tlsCertProvider.CollectSelfSignedHosts()
+	if len(hostNames) == 0 {
+		return
+	}
+	for _, hostN := range hostNames {
+		reqMsg := &qbw1grpcgen.HostCertificateRequest{
+			HostDNSName: hostN,
+		}
+		m, err := qabalwrap.MarshalIntoClearEnvelopedMessage(
+			s.localServiceRef.SerialIdent, qabalwrap.PrimaryMessageSwitchServiceIdent,
+			qabalwrap.MessageContentRootCertificateRequest, reqMsg)
+		if nil != err {
+			log.Printf("ERROR: (MessageSwitch::emitHostCertificateRequests) cannot create enveloped message: %v", err)
+			return
+		}
+		if err = s.forwardClearEnvelopedMessage(m); nil != err {
+			log.Printf("ERROR: (MessageSwitch::emitHostCertificateRequests) cannot emit enveloped message: %v", err)
+		}
+	}
+}
+
 func (s *MessageSwitch) maintenanceWorks(ctx context.Context, waitGroup *sync.WaitGroup) {
 	defer waitGroup.Done()
 	hndKnownServiceIdentsNotify, err := newKnownServiceIdentsNotifyHandler(s)
@@ -268,11 +294,16 @@ func (s *MessageSwitch) maintenanceWorks(ctx context.Context, waitGroup *sync.Wa
 			handleRootCertificateRequest(s, rootCertReqSerialIdent)
 		case rootCertKeyPair := <-s.rootCertificateAssignment:
 			handleRootCertificateAssignment(waitGroup, s, rootCertKeyPair)
+		case hostCertReq := <-s.hostCertificateRequests:
+			handleHostCertificateRequest(s, hostCertReq)
+		case hostCertAssign := <-s.hostCertificateAssignments:
+			handleHostCertificateAssignment(waitGroup, s, hostCertAssign)
 		case <-ticker.C:
 			lostedRelay := s.emitRelayHeartbeat()
 			s.crossBar.relayLinksLosted(lostedRelay)
 			s.emitAllocateServiceIdentsRequest()
 			s.emitRootCertificateRequest()
+			s.emitHostCertificateRequests()
 		case <-ctx.Done():
 			running = false
 			log.Print("INFO: (MessageSwitch::maintenanceWorks) get stop notice.")
@@ -352,6 +383,14 @@ func (s *MessageSwitch) ReceiveMessage(m *qabalwrap.EnvelopedMessage) (err error
 	case qabalwrap.MessageContentRootCertificateAssignment:
 		if err = queueRootCertificateAssignment(s, m); nil != err {
 			log.Printf("ERROR: (MessageSwitch::ReceiveMessage) queue root cert assignment failed: %v", err)
+		}
+	case qabalwrap.MessageContentHostCertificateRequest:
+		if err = queueHostCertificateRequest(s, m); nil != err {
+			log.Printf("ERROR: (MessageSwitch::ReceiveMessage) queue host cert request failed: %v", err)
+		}
+	case qabalwrap.MessageContentHostCertificateAssignment:
+		if err = queueHostCertificateAssignment(s, m); nil != err {
+			log.Printf("ERROR: (MessageSwitch::ReceiveMessage) queue host cert assignment failed: %v", err)
 		}
 	}
 	return

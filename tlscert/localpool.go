@@ -144,6 +144,7 @@ func (lc *localCerts) setupHostKeyPair(hostDNSName string) (err error) {
 
 func (lc *localCerts) setHostKeyPair(hostDNSName string, hostCertKeyPair *CertificateKeyPair) {
 	lc.HostCertKeyPairs[hostDNSName] = hostCertKeyPair
+	lc.lastModifyTimestamp = time.Now().Unix()
 }
 
 // HaveRootCertificate check if root certificate existed.

@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	qabalwrap "github.com/qabalwrap/qabalwrap-1"
+	"github.com/qabalwrap/qabalwrap-1/gen/qbw1grpcgen"
 )
 
 type subscribedHostTLSCerts struct {
@@ -44,29 +45,35 @@ func (p *Provider) Init(
 	return
 }
 
+func (p *Provider) updateSubscribedHostTLSCert(waitGroup *sync.WaitGroup, subscriptionRec *subscribedHostTLSCerts) (err error) {
+	tlsCerts := make([]tls.Certificate, 0, len(subscriptionRec.hostNameSerials))
+	for hostN := range subscriptionRec.hostNameSerials {
+		var cert *tls.Certificate
+		var keyPair *CertificateKeyPair
+		if keyPair, err = p.localCerts.prepareHostKeyPair(hostN, p.primaryTLSCertProvider); nil != err {
+			log.Printf("ERROR: (updateSubscribedHostTLSCert) prepare TLS certificate failed [host=%s]: %v", hostN, err)
+			return
+		} else if keyPair != nil {
+			cert = keyPair.TLSCertificate(p.RootCertKeyPair)
+			subscriptionRec.hostNameSerials[hostN] = keyPair.Certificate.SerialNumber.Int64()
+		} else {
+			if cert, err = MakeSelfSignedHostTLSCertificate(p.Country, p.Organization, hostN); nil != err {
+				log.Printf("ERROR: (updateSubscribedHostTLSCert) generate self-signed TLS certificate failed [host=%s]: %v", hostN, err)
+				return
+			}
+			subscriptionRec.hostNameSerials[hostN] = 0
+		}
+		tlsCerts = append(tlsCerts, *cert)
+	}
+	if err = subscriptionRec.certSubscriber.UpdateHostTLSCertificates(waitGroup, tlsCerts); nil == err {
+		log.Printf("ERROR: (updateSubscribedHostTLSCert) update certificate complete: %v", err)
+	}
+	return
+}
+
 func (p *Provider) updateAllHostTLSCert(waitGroup *sync.WaitGroup) (err error) {
 	for _, subscriptionRec := range p.hostTLSCertSubscriptions {
-		tlsCerts := make([]tls.Certificate, 0, len(subscriptionRec.hostNameSerials))
-		for hostN := range subscriptionRec.hostNameSerials {
-			var cert *tls.Certificate
-			var keyPair *CertificateKeyPair
-			if keyPair, err = p.localCerts.prepareHostKeyPair(hostN, p.primaryTLSCertProvider); nil != err {
-				log.Printf("ERROR: (updateAllHostTLSCert) prepare TLS certificate failed [host=%s]: %v", hostN, err)
-				return
-			} else if keyPair != nil {
-				cert = keyPair.TLSCertificate(p.RootCertKeyPair)
-				subscriptionRec.hostNameSerials[hostN] = keyPair.Certificate.SerialNumber.Int64()
-			} else {
-				if cert, err = MakeSelfSignedHostTLSCertificate(p.Country, p.Organization, hostN); nil != err {
-					log.Printf("ERROR: (updateAllHostTLSCert) generate self-signed TLS certificate failed [host=%s]: %v", hostN, err)
-					return
-				}
-				subscriptionRec.hostNameSerials[hostN] = 0
-			}
-			tlsCerts = append(tlsCerts, *cert)
-		}
-		if err = subscriptionRec.certSubscriber.UpdateHostTLSCertificates(waitGroup, tlsCerts); nil == err {
-			log.Printf("ERROR: (updateAllHostTLSCert) update certificate complete: %v", err)
+		if err = p.updateSubscribedHostTLSCert(waitGroup, subscriptionRec); nil != err {
 			return
 		}
 	}
@@ -100,6 +107,22 @@ func (p *Provider) UpdateRootCertificate(waitGroup *sync.WaitGroup, certKeyPair 
 	return
 }
 
+func (p *Provider) UpdateHostCertificate(waitGroup *sync.WaitGroup, hostName string, certKeyPair *CertificateKeyPair) (err error) {
+	p.localCerts.setHostKeyPair(hostName, certKeyPair)
+	for _, subscriptionRec := range p.hostTLSCertSubscriptions {
+		if _, ok := subscriptionRec.hostNameSerials[hostName]; !ok {
+			continue
+		}
+		if err = p.updateSubscribedHostTLSCert(waitGroup, subscriptionRec); nil != err {
+			return
+		}
+	}
+	if err = p.saveWhenModified(p.stateStore); nil != err {
+		log.Printf("ERROR: (updateAllHostTLSCert) cannot save certificate pool: %v", err)
+	}
+	return
+}
+
 // CollectSelfSignedHosts get hostnames with self-signed certificate issued.
 func (p *Provider) CollectSelfSignedHosts() (hostNames []string) {
 	c := make(map[string]struct{})
@@ -114,6 +137,18 @@ func (p *Provider) CollectSelfSignedHosts() (hostNames []string) {
 	hostNames = make([]string, 0, len(c))
 	for hostN := range c {
 		hostNames = append(hostNames, hostN)
+	}
+	return
+}
+
+func (p *Provider) PrepareQBw1HostCertificateAssignment(hostName string) (resp *qbw1grpcgen.HostCertificateAssignment, err error) {
+	keyPair, err := p.localCerts.prepareHostKeyPair(hostName, p.primaryTLSCertProvider)
+	if nil != err {
+		log.Printf("ERROR: (PrepareQBw1HostCertificateAssignment) prepare TLS certificate failed [host=%s]: %v", hostName, err)
+		return
+	}
+	if keyPair != nil {
+		resp = keyPair.QBw1HostCertificateAssignment(hostName)
 	}
 	return
 }
