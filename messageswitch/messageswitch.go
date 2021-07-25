@@ -46,6 +46,8 @@ func NewMessageSwitch(
 	textIdent, dnCountry, dnOrganization string,
 	primarySwitch bool) (s *MessageSwitch, err error) {
 	aux := &MessageSwitch{
+		primarySwitch:                 primarySwitch,
+		stateStore:                    stateStore,
 		notifyPeerKnownServiceIdents:  make(chan *knownServiceIdentsNotify, 2),
 		allocateServiceIdentsRequests: make(chan *ServiceReference, 2),
 		rootCertificateRequests:       make(chan int, 2),
@@ -68,6 +70,7 @@ func NewMessageSwitch(
 	} else {
 		aux.localServiceRef = &conn.ServiceReference
 	}
+	aux.precomputedKeys.init()
 	s = aux
 	return
 }

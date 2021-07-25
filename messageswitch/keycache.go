@@ -16,6 +16,10 @@ type precomputedKeyCache struct {
 	keyCache map[uint32]*[32]byte
 }
 
+func (c *precomputedKeyCache) init() {
+	c.keyCache = make(map[uint32]*[32]byte)
+}
+
 func (c *precomputedKeyCache) getDecryptSharedKey(srcServiceConn, destServiceConn *serviceConnect) (sharedKey *[32]byte) {
 	cacheKey := computeKeyCacheHashKey(srcServiceConn.SerialIdent, destServiceConn.SerialIdent)
 	c.lck.Lock()
