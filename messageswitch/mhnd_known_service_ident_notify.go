@@ -63,6 +63,7 @@ func (h *knownServiceIdentsNotifyHandler) handleAsOrdinarySwitch(notice *knownSe
 		}
 		conn.updateRelayHopCount(relayIndex, int(svrIdent.LinkHopCount))
 	}
+	h.s.crossBar.setServiceZeroSerialIdent(int(notice.knownServiceIdents.PrimarySerialIdent))
 }
 
 func (h *knownServiceIdentsNotifyHandler) handle(notice *knownServiceIdentsNotify) {

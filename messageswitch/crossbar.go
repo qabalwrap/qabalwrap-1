@@ -293,6 +293,22 @@ func (b *crossBar) getServiceConnectByServiceReference(serviceRef *ServiceRefere
 	return
 }
 
+func (b *crossBar) setServiceZeroSerialIdent(serviceSerialIdent int) {
+	b.lckConnects.Lock()
+	defer b.lckConnects.Unlock()
+	l := len(b.connectsBySerialIdent)
+	if (serviceSerialIdent < qabalwrap.AssignableServiceIdentMin) || (serviceSerialIdent >= l) {
+		log.Printf("ERROR: (crossBar::setServiceZeroSerialIdent) given serial out of range: %d.", serviceSerialIdent)
+		return
+	}
+	if (b.connectsBySerialIdent[0] != nil) && (b.connectsBySerialIdent[0].SerialIdent != serviceSerialIdent) {
+		log.Printf("WARN: (crossBar::setServiceZeroSerialIdent) given service zero serial not consist with existed one: existed=%d vs. given=%d.",
+			b.connectsBySerialIdent[0].SerialIdent, serviceSerialIdent)
+		return
+	}
+	b.connectsBySerialIdent[0] = b.connectsBySerialIdent[serviceSerialIdent]
+}
+
 // assignServiceSerialIdents set serial to unassign service connects.
 // May invoke on setup and operating stage.
 func (b *crossBar) assignServiceSerialIdents() {
