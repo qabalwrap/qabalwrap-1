@@ -180,6 +180,7 @@ func (p *HTTPClientAccessProvider) exchangeLoop(waitGroup *sync.WaitGroup) {
 	defer waitGroup.Done()
 	collectTimeout := slowEmptyMessageCollectTimeout
 	var failureCount int
+	var currentSessionTimestamp int64
 	for {
 		var exportedMessageCount, dispatchedMessageCount int
 		var err error
@@ -195,8 +196,13 @@ func (p *HTTPClientAccessProvider) exchangeLoop(waitGroup *sync.WaitGroup) {
 		if nil != err {
 			log.Printf("ERROR: (HTTPClientAccessProvider::ExchangeLoop) exchange failed: %v", err)
 			failureCount++
+			currentSessionTimestamp = 0
 		} else {
 			failureCount = 0
+			if currentSessionTimestamp == 0 {
+				currentSessionTimestamp = time.Now().UnixNano()
+				p.messageDispatcher.LinkEstablished()
+			}
 		}
 		if p.ctx.Err() != nil {
 			log.Print("INFO: (HTTPClientAccessProvider::exchangeLoop) exit loop.")
