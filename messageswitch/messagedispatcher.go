@@ -175,3 +175,7 @@ func (d *messageDispatcher) DispatchMessage(m *qabalwrap.EnvelopedMessage) {
 		log.Printf("ERROR: cannot forward enveloped message (relay-index=%d): %v", d.relayIndex, err)
 	}
 }
+
+func (d *messageDispatcher) LinkEstablished() {
+	d.messageSwitch.notifyRelayLinkEstablished <- d.relayIndex
+}

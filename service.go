@@ -32,6 +32,10 @@ type MessageSender interface {
 type MessageDispatcher interface {
 	// DispatchMessage pass message into message switch.
 	DispatchMessage(m *EnvelopedMessage)
+
+	// LinkEstablished notice message switch link is created.
+	// Some messages aight sent before notification.
+	LinkEstablished()
 }
 
 type RelayProvider interface {

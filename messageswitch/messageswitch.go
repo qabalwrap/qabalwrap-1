@@ -33,6 +33,7 @@ type MessageSwitch struct {
 	messageDispatchers []*messageDispatcher
 
 	notifyPeerKnownServiceIdents  chan *knownServiceIdentsNotify
+	notifyRelayLinkEstablished    chan int
 	allocateServiceIdentsRequests chan *ServiceReference
 	rootCertificateRequests       chan int
 	rootCertificateAssignment     chan *qw1tlscert.CertificateKeyPair
@@ -49,6 +50,7 @@ func NewMessageSwitch(
 		primarySwitch:                 primarySwitch,
 		stateStore:                    stateStore,
 		notifyPeerKnownServiceIdents:  make(chan *knownServiceIdentsNotify, 2),
+		notifyRelayLinkEstablished:    make(chan int, 2),
 		allocateServiceIdentsRequests: make(chan *ServiceReference, 2),
 		rootCertificateRequests:       make(chan int, 2),
 		rootCertificateAssignment:     make(chan *qw1tlscert.CertificateKeyPair, 1),
@@ -313,6 +315,8 @@ func (s *MessageSwitch) maintenanceWorks(ctx context.Context, waitGroup *sync.Wa
 		select {
 		case notice := <-s.notifyPeerKnownServiceIdents:
 			hndKnownServiceIdentsNotify.handle(notice)
+		case relayIndex := <-s.notifyRelayLinkEstablished:
+			hndKnownServiceIdentsNotify.emitCachedKnownServiceIdents(relayIndex)
 		case allocateServiceRef := <-s.allocateServiceIdentsRequests:
 			handleAllocateServiceIdentsRequest(s, allocateServiceRef)
 			hndKnownServiceIdentsNotify.checkChanges()

@@ -88,6 +88,10 @@ func (h *knownServiceIdentsNotifyHandler) handle(notice *knownServiceIdentsNotif
 	}
 }
 
+func (h *knownServiceIdentsNotifyHandler) emitCachedKnownServiceIdents(relayIndex int) {
+	h.s.nonblockingRelayPeerMessage(relayIndex, h.messageCache)
+}
+
 func (h *knownServiceIdentsNotifyHandler) checkChanges() {
 	knownServiceIdentsMessage, knownServiceIdentsDigest, err := h.s.buildKnownServiceIdentsMessage()
 	if nil != err {
