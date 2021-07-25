@@ -392,6 +392,9 @@ func (s *MessageSwitch) ReceiveMessage(m *qabalwrap.EnvelopedMessage) (err error
 		if err = queueHostCertificateAssignment(s, m); nil != err {
 			log.Printf("ERROR: (MessageSwitch::ReceiveMessage) queue host cert assignment failed: %v", err)
 		}
+	default:
+		log.Printf("WARN: (MessageSwitch::ReceiveMessage) unprocess message from %d to %d [content-type=%d].",
+			m.SourceServiceIdent, m.DestinationServiceIdent, m.MessageContentType())
 	}
 	return
 }

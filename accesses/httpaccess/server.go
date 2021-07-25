@@ -89,12 +89,12 @@ func (p *serverAccessChannel) Start(ctx context.Context, waitGroup *sync.WaitGro
 }
 
 func (p *serverAccessChannel) BlockingEmitMessage(rawMessage *qabalwrap.EnvelopedMessage) (err error) {
-	// log.Printf("TRACE: (HTTPServeAccessChannel::EmitMessage) s=%d, d=%d, hop=%d", rawMessage.SourceServiceIdent, rawMessage.DestinationServiceIdent, rawMessage.RemainHops)
+	// log.Printf("TRACE: (HTTPServeAccessChannel::EmitMessage) blocking s=%d, d=%d, hop=%d", rawMessage.SourceServiceIdent, rawMessage.DestinationServiceIdent, rawMessage.RemainHops)
 	return p.blockingEmitMessage(p.ctx, rawMessage)
 }
 
 func (p *serverAccessChannel) NonblockingEmitMessage(rawMessage *qabalwrap.EnvelopedMessage) (emitSuccess bool) {
-	// log.Printf("TRACE: (HTTPServeAccessChannel::EmitMessage) s=%d, d=%d, hop=%d", rawMessage.SourceServiceIdent, rawMessage.DestinationServiceIdent, rawMessage.RemainHops)
+	// log.Printf("TRACE: (HTTPServeAccessChannel::EmitMessage) non-blocking s=%d, d=%d, hop=%d", rawMessage.SourceServiceIdent, rawMessage.DestinationServiceIdent, rawMessage.RemainHops)
 	return p.nonblockingEmitMessage(p.ctx, rawMessage)
 }
 
@@ -153,11 +153,6 @@ func (p *HTTPServeAccessProvider) ServeHTTP(w http.ResponseWriter, r *http.Reque
 func (p *HTTPServeAccessProvider) ReceiveMessage(rawMessage *qabalwrap.EnvelopedMessage) (err error) {
 	log.Printf("WARN: (HTTPServeAccessProvider::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", rawMessage.SourceServiceIdent, rawMessage.DestinationServiceIdent, rawMessage.MessageContentType())
 	return
-}
-
-// SetMessageSender implement SqabalwraperviceProvider interface.
-func (p *HTTPServeAccessProvider) SetMessageSender(messageSender qabalwrap.MessageSender) {
-	// TODO: implements
 }
 
 // RelayProviders return associated relay providers if available.

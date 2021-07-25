@@ -243,11 +243,6 @@ func (p *HTTPClientAccessProvider) ReceiveMessage(rawMessage *qabalwrap.Envelope
 	return
 }
 
-// SetMessageSender implement ServiceProvider interface.
-func (p *HTTPClientAccessProvider) SetMessageSender(messageSender qabalwrap.MessageSender) {
-	// TODO: implements
-}
-
 func (p *HTTPClientAccessProvider) BlockingEmitMessage(rawMessage *qabalwrap.EnvelopedMessage) (err error) {
 	return p.blockingEmitMessage(p.ctx, rawMessage)
 }

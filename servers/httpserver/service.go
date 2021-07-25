@@ -59,11 +59,6 @@ func (s *Service) ReceiveMessage(envelopedMessage *qabalwrap.EnvelopedMessage) (
 	return
 }
 
-// SetMessageSender implement ServiceProvider interface.
-func (s *Service) SetMessageSender(messageSender qabalwrap.MessageSender) {
-	// TODO: implements
-}
-
 // UpdateHostTLSCertificates trigger host TLS update of service.
 func (s *Service) UpdateHostTLSCertificates(waitGroup *sync.WaitGroup, tlsCerts []tls.Certificate) (err error) {
 	s.tlsCerts = tlsCerts

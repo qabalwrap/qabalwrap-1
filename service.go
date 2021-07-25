@@ -21,21 +21,6 @@ const (
 	UnknownServiceIdent                    = -1
 )
 
-type ContentEdgeProvider interface {
-	ServiceProvider
-
-	// Stop close all pending transfers.
-	Stop()
-}
-
-type ContentFetchProvider interface {
-	ServiceProvider
-}
-
-type AccessProvider interface {
-	ServiceProvider
-}
-
 type MessageSender interface {
 	// Send given message into message switch.
 	Send(destServiceIdent int, messageContentType MessageContentType, messageContent proto.Message)
@@ -99,13 +84,4 @@ type ServiceProvider interface {
 	// RelayProviders return associated relay providers if available.
 	// Return nil if this service provider does not support relay service.
 	RelayProviders() (relayProviders []RelayProvider)
-
-	// SwitchAvailable is invoked when message switch is available.
-	//SwitchAvailable()
-
-	// RegisterAvailable is invoked when service register is available.
-	//RegisterAvailable()
-
-	// RegisterUpdated is invoked when records in service register is modified.
-	//RegisterUpdated()
 }
