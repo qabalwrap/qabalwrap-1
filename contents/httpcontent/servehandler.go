@@ -137,11 +137,13 @@ func (hnd *HTTPContentServeHandler) ReceiveMessage(envelopedMessage *qabalwrap.E
 	case qabalwrap.MessageContentHTTPContentResponse:
 		var req qbw1grpcgen.HTTPContentResponse
 		if err = envelopedMessage.Unmarshal(&req); nil != err {
+			log.Printf("ERROR: (HTTPContentServeHandler::ReceiveMessage) unmarshal response failed: %v", err)
 			return
 		}
 		hnd.processContentResponse(&req)
+	default:
+		log.Printf("WARN: (HTTPContentServeHandler::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", envelopedMessage.SourceServiceIdent, envelopedMessage.DestinationServiceIdent, envelopedMessage.MessageContentType())
 	}
-	log.Printf("WARN: (HTTPContentServeHandler::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", envelopedMessage.SourceServiceIdent, envelopedMessage.DestinationServiceIdent, envelopedMessage.MessageContentType())
 	return
 }
 
