@@ -152,8 +152,11 @@ func (b *crossBar) attachServiceProvider(textIdent string, serviceProvider qabal
 }
 
 func (b *crossBar) postSetup() {
-	for _, conn := range b.connectsBySerialIdent {
-		conn.setRelayProviders(b.relayProviders)
+	for connIndex, connInst := range b.connectsBySerialIdent {
+		if connInst == nil {
+			log.Printf("TRACE: (crossBar::postSetup) empty service connection: index=%d", connIndex)
+		}
+		connInst.setRelayProviders(b.relayProviders)
 	}
 }
 

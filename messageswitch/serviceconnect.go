@@ -118,7 +118,7 @@ func (c *serviceConnect) setServiceProvider(serviceProvider qabalwrap.ServicePro
 // setRelayProviders connect given relayProviders with service.
 // Should only invoke at setup stage or before service ident assignment.
 func (c *serviceConnect) setRelayProviders(relayProviders []qabalwrap.RelayProvider) {
-	if (c.serviceProvider != nil) || (len(relayProviders) == len(c.relayStatsByIndex)) {
+	if (c == nil) || (c.serviceProvider != nil) || (len(relayProviders) == len(c.relayStatsByIndex)) {
 		return
 	}
 	c.relayStatsByHop = newServiceRelays(relayProviders)
@@ -127,7 +127,7 @@ func (c *serviceConnect) setRelayProviders(relayProviders []qabalwrap.RelayProvi
 }
 
 func (c *serviceConnect) setMessageSender(s *MessageSwitch) {
-	if c.alreadySetMessageSender || (c.serviceProvider == nil) || (c.SerialIdent == qabalwrap.UnknownServiceIdent) {
+	if (c == nil) || c.alreadySetMessageSender || (c.serviceProvider == nil) || (c.SerialIdent == qabalwrap.UnknownServiceIdent) {
 		return
 	}
 	sender := newMessageSender(c.SerialIdent, s)

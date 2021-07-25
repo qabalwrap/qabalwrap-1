@@ -192,8 +192,11 @@ func (s *MessageSwitch) checkCrossBarServiceConnectChanged() {
 		log.Printf("ERROR: (MessageSwitch::checkCrossBarServiceConnectChanged) saving known service reference failed: %v", err)
 	}
 	connects := s.crossBar.makeServiceConnectsSnapshot()
-	for _, conn := range connects {
-		conn.setMessageSender(s)
+	for connIndex, connInst := range connects {
+		if connInst == nil {
+			log.Printf("TRACE: (MessageSwitch::checkCrossBarServiceConnectChanged) empty service connection: index=%d.", connIndex)
+		}
+		connInst.setMessageSender(s)
 	}
 	if err := s.refreshLocalServiceRef(); nil != err {
 		log.Printf("ERROR: (MessageSwitch::checkCrossBarServiceConnectChanged) update local service reference failed: %v", err)
@@ -220,7 +223,7 @@ func (s *MessageSwitch) emitAllocateServiceIdentsRequest() {
 	primaryLink := s.crossBar.getServiceConnectBySerial(qabalwrap.PrimaryMessageSwitchServiceIdent)
 	if (primaryLink == nil) || (!primaryLink.linkAvailable()) {
 		log.Print("INFO: (MessageSwitch::requestServiceSerialAssignment) cannot reach primary switch.")
-		return
+		primaryLink = nil
 	}
 	reqMsg, err := s.crossBar.makeAllocateServiceIdentsRequest()
 	if nil != err {
@@ -232,8 +235,15 @@ func (s *MessageSwitch) emitAllocateServiceIdentsRequest() {
 		log.Printf("ERROR: (MessageSwitch::requestServiceSerialAssignment) cannot create enveloped message: %v", err)
 		return
 	}
-	if err = primaryLink.emitMessage(m); nil != err {
-		log.Printf("ERROR: (MessageSwitch::requestServiceSerialAssignment) cannot emit enveloped message: %v", err)
+	if primaryLink != nil {
+		if err = primaryLink.emitMessage(m); nil != err {
+			log.Printf("ERROR: (MessageSwitch::requestServiceSerialAssignment) cannot emit enveloped message: %v", err)
+		}
+	} else {
+		for relayIndex, relayInst := range s.crossBar.relayProviders {
+			emitSuccess := relayInst.NonblockingEmitMessage(m)
+			log.Printf("TRACE: (MessageSwitch::requestServiceSerialAssignment) emit with relay (index=%d): success=%v.", relayIndex, emitSuccess)
+		}
 	}
 	log.Printf("TRACE: (MessageSwitch::requestServiceSerialAssignment) emitted for (%d) services.",
 		len(reqMsg.ServiceIdents))
@@ -293,6 +303,7 @@ func (s *MessageSwitch) maintenanceWorks(ctx context.Context, waitGroup *sync.Wa
 	}
 	ticker := time.NewTicker(time.Minute * 2)
 	defer ticker.Stop()
+	s.emitAllocateServiceIdentsRequest()
 	running := true
 	for running {
 		s.checkCrossBarServiceConnectChanged()
@@ -335,11 +346,16 @@ func (s *MessageSwitch) postSetup() {
 	relayProviders := s.crossBar.relayProviders
 	s.messageDispatchers = make([]*messageDispatcher, len(relayProviders))
 	for relayIndex, relayInst := range relayProviders {
-		s.messageDispatchers[relayIndex] = newMessageDispatcher(relayIndex, relayInst, s)
+		msgDispatcher := newMessageDispatcher(relayIndex, relayInst, s)
+		s.messageDispatchers[relayIndex] = msgDispatcher
+		relayInst.SetMessageDispatcher(msgDispatcher)
 	}
 	connects := s.crossBar.makeServiceConnectsSnapshot()
-	for _, conn := range connects {
-		conn.setMessageSender(s)
+	for connIndex, connInst := range connects {
+		if connInst == nil {
+			log.Printf("TRACE: (MessageSwitch::postSetup) empty service connection: index=%d.", connIndex)
+		}
+		connInst.setMessageSender(s)
 	}
 }
 
