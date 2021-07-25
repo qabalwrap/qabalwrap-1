@@ -90,12 +90,14 @@ func (h *knownServiceIdentsNotifyHandler) handle(notice *knownServiceIdentsNotif
 func (h *knownServiceIdentsNotifyHandler) checkChanges() {
 	knownServiceIdentsMessage, knownServiceIdentsDigest, err := h.s.buildKnownServiceIdentsMessage()
 	if nil != err {
-		log.Printf("ERROR: (knownServiceIdentsNotifyHandler::check) cannot build known service identifiers message: %v", err)
+		log.Printf("ERROR: (knownServiceIdentsNotifyHandler::checkChanges) cannot build known service identifiers message: %v", err)
 		return
 	}
 	if knownServiceIdentsDigest == h.messageDigest {
+		log.Print("TRACE: (knownServiceIdentsNotifyHandler::checkChanges) no change.")
 		return
 	}
+	log.Print("TRACE: (knownServiceIdentsNotifyHandler::checkChanges) changed.")
 	h.messageCache = knownServiceIdentsMessage
 	h.messageDigest = knownServiceIdentsDigest
 	h.s.nonblockingRelayPeerBroadcast(h.messageCache)
