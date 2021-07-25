@@ -146,10 +146,15 @@ func (s *MessageSwitch) buildKnownServiceIdentsMessage() (msg *qabalwrap.Envelop
 	}
 	buf, err := proto.Marshal(knownServiceIdents)
 	if nil != err {
-		log.Printf("ERROR: (MessageSwitch::buildKnownServiceIdentsMessage) marshal known service idents failed: %v", err)
+		log.Printf("ERROR: (MessageSwitch::buildKnownServiceIdentsMessage) marshal known service idents failed (step-1): %v", err)
 		return
 	}
 	digest.SumBytes(buf)
+	knownServiceIdents.GenerationTimestamp = time.Now().UnixNano()
+	if buf, err = proto.Marshal(knownServiceIdents); nil != err {
+		log.Printf("ERROR: (MessageSwitch::buildKnownServiceIdentsMessage) marshal known service idents failed (step-2): %v", err)
+		return
+	}
 	msg = qabalwrap.NewClearEnvelopedMessage(
 		qabalwrap.AccessProviderPeerServiceIdent, qabalwrap.AccessProviderPeerServiceIdent,
 		qabalwrap.MessageContentKnownServiceIdents, buf)
