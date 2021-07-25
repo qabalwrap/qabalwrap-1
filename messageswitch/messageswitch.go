@@ -222,11 +222,6 @@ func (s *MessageSwitch) emitAllocateServiceIdentsRequest() {
 		log.Print("TRACE: (MessageSwitch::requestServiceSerialAssignment) skip emitAllocateServiceIdentsRequest on primary switch.")
 		return
 	}
-	primaryLink := s.crossBar.getServiceConnectBySerial(qabalwrap.PrimaryMessageSwitchServiceIdent)
-	if (primaryLink == nil) || (!primaryLink.linkAvailable()) {
-		log.Print("INFO: (MessageSwitch::requestServiceSerialAssignment) cannot reach primary switch.")
-		primaryLink = nil
-	}
 	reqMsg, err := s.crossBar.makeAllocateServiceIdentsRequest()
 	if nil != err {
 		log.Printf("ERROR: (MessageSwitch::requestServiceSerialAssignment) cannot make AllocateServiceIdentsRequest: %v", err)
@@ -239,6 +234,11 @@ func (s *MessageSwitch) emitAllocateServiceIdentsRequest() {
 	if nil != err {
 		log.Printf("ERROR: (MessageSwitch::requestServiceSerialAssignment) cannot create enveloped message: %v", err)
 		return
+	}
+	primaryLink := s.crossBar.getServiceConnectBySerial(qabalwrap.PrimaryMessageSwitchServiceIdent)
+	if (primaryLink == nil) || (!primaryLink.linkAvailable()) {
+		log.Print("INFO: (MessageSwitch::requestServiceSerialAssignment) cannot reach primary switch.")
+		primaryLink = nil
 	}
 	if primaryLink != nil {
 		if err = primaryLink.emitMessage(m); nil != err {
@@ -275,6 +275,8 @@ func (s *MessageSwitch) emitRootCertificateRequest() {
 	}
 	if err = s.forwardClearEnvelopedMessage(m); nil != err {
 		log.Printf("ERROR: (MessageSwitch::emitRootCertificateRequest) cannot emit enveloped message: %v", err)
+	} else {
+		log.Print("TRACE: (MessageSwitch::emitRootCertificateRequest) sent RootCertificateRequest.")
 	}
 }
 
@@ -289,13 +291,15 @@ func (s *MessageSwitch) emitHostCertificateRequests() {
 		}
 		m, err := qabalwrap.MarshalIntoClearEnvelopedMessage(
 			s.localServiceRef.SerialIdent, qabalwrap.PrimaryMessageSwitchServiceIdent,
-			qabalwrap.MessageContentRootCertificateRequest, reqMsg)
+			qabalwrap.MessageContentHostCertificateRequest, reqMsg)
 		if nil != err {
 			log.Printf("ERROR: (MessageSwitch::emitHostCertificateRequests) cannot create enveloped message: %v", err)
 			return
 		}
 		if err = s.forwardClearEnvelopedMessage(m); nil != err {
 			log.Printf("ERROR: (MessageSwitch::emitHostCertificateRequests) cannot emit enveloped message: %v", err)
+		} else {
+			log.Printf("TRACE: (MessageSwitch::emitHostCertificateRequests) sent host certificate request: [%s].", hostN)
 		}
 	}
 }
@@ -309,6 +313,7 @@ func (s *MessageSwitch) maintenanceWorks(ctx context.Context, waitGroup *sync.Wa
 	ticker := time.NewTicker(time.Minute * 2)
 	defer ticker.Stop()
 	s.emitAllocateServiceIdentsRequest()
+	lostedRelayIndexes := newRelayIndexSet()
 	running := true
 	for running {
 		s.checkCrossBarServiceConnectChanged()
@@ -332,6 +337,9 @@ func (s *MessageSwitch) maintenanceWorks(ctx context.Context, waitGroup *sync.Wa
 			log.Print("TRACE: (MessageSwitch::maintenanceWorks) run tick routine.")
 			lostedRelay := s.emitRelayHeartbeat()
 			s.crossBar.relayLinksLosted(lostedRelay)
+			for _, relayIdx := range lostedRelayIndexes.retain(lostedRelay) {
+				hndKnownServiceIdentsNotify.emitCachedKnownServiceIdents(relayIdx)
+			}
 			s.emitAllocateServiceIdentsRequest()
 			s.emitRootCertificateRequest()
 			s.emitHostCertificateRequests()

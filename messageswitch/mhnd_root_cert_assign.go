@@ -31,6 +31,7 @@ func queueRootCertificateAssignment(s *MessageSwitch, m *qabalwrap.EnvelopedMess
 }
 
 func handleRootCertificateAssignment(waitgroup *sync.WaitGroup, s *MessageSwitch, k *qw1tlscert.CertificateKeyPair) (err error) {
+	log.Print("INFO: (handleRootCertificateAssignment) have root cert assignment.")
 	if err = s.tlsCertProvider.UpdateRootCertificate(waitgroup, k); nil != err {
 		log.Printf("ERROR: (handleRootCertificateAssignment) update root cert failed: %v", err)
 	}

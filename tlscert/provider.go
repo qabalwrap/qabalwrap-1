@@ -62,6 +62,7 @@ func (p *Provider) updateSubscribedHostTLSCert(waitGroup *sync.WaitGroup, subscr
 				return
 			}
 			subscriptionRec.hostNameSerials[hostN] = 0
+			log.Printf("INFO: (updateSubscribedHostTLSCert) use self-signed TLS certificate [host=%s]", hostN)
 		}
 		tlsCerts = append(tlsCerts, *cert)
 	}
@@ -101,14 +102,20 @@ func (p *Provider) UpdateRootCertificate(waitGroup *sync.WaitGroup, certKeyPair 
 		return
 	}
 	if !changed {
+		log.Printf("INFO: (UpdateRootCertificate) not change: changed=%v", changed)
 		return
 	}
 	if err = p.updateAllHostTLSCert(waitGroup); nil != err {
 		log.Printf("ERROR: (UpdateRootCertificate) update all host TLS cert failed: %v", err)
 	}
+	if err = p.saveWhenModified(p.stateStore); nil != err {
+		log.Printf("ERROR: (UpdateRootCertificate) cannot save certificate pool: %v", err)
+	}
+	log.Print("TRACE: (UpdateRootCertificate) update completed.")
 	return
 }
 
+// UpdateHostCertificate associate given certificate with given host name and invoke TLS certificate update.
 func (p *Provider) UpdateHostCertificate(waitGroup *sync.WaitGroup, hostName string, certKeyPair *CertificateKeyPair) (err error) {
 	p.localCerts.setHostKeyPair(hostName, certKeyPair)
 	for _, subscriptionRec := range p.hostTLSCertSubscriptions {
@@ -120,8 +127,9 @@ func (p *Provider) UpdateHostCertificate(waitGroup *sync.WaitGroup, hostName str
 		}
 	}
 	if err = p.saveWhenModified(p.stateStore); nil != err {
-		log.Printf("ERROR: (updateAllHostTLSCert) cannot save certificate pool: %v", err)
+		log.Printf("ERROR: (UpdateHostCertificate) cannot save certificate pool: %v", err)
 	}
+	log.Printf("TRACE: (UpdateHostCertificate) update completed [%s].", hostName)
 	return
 }
 
@@ -131,6 +139,7 @@ func (p *Provider) CollectSelfSignedHosts() (hostNames []string) {
 	for _, subscriptionRec := range p.hostTLSCertSubscriptions {
 		for hostN, certSn := range subscriptionRec.hostNameSerials {
 			if certSn != 0 {
+				log.Printf("TRACE: (Provider::CollectSelfSignedHosts) not self-signed certificate: %s", hostN)
 				continue
 			}
 			c[hostN] = struct{}{}
@@ -151,6 +160,9 @@ func (p *Provider) PrepareQBw1HostCertificateAssignment(hostName string) (resp *
 	}
 	if keyPair != nil {
 		resp = keyPair.QBw1HostCertificateAssignment(hostName)
+	}
+	if err = p.saveWhenModified(p.stateStore); nil != err {
+		log.Printf("ERROR: (PrepareQBw1HostCertificateAssignment) cannot save certificate pool: %v", err)
 	}
 	return
 }

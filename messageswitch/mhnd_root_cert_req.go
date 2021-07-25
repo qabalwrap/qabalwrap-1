@@ -29,6 +29,8 @@ func handleRootCertificateRequest(s *MessageSwitch, requestSourceIdent int) (err
 	}
 	if err = s.forwardClearEnvelopedMessage(m); nil != err {
 		log.Printf("ERROR: (handleRootCertificateRequest) cannot emit enveloped message: %v", err)
+	} else {
+		log.Printf("INFO: (handleRootCertificateRequest) responed: destination=%d", requestSourceIdent)
 	}
 	return
 }

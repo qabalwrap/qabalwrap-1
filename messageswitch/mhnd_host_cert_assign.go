@@ -35,6 +35,7 @@ func queueHostCertificateAssignment(s *MessageSwitch, m *qabalwrap.EnvelopedMess
 }
 
 func handleHostCertificateAssignment(waitgroup *sync.WaitGroup, s *MessageSwitch, r *hostCertAssignment) (err error) {
+	log.Printf("INFO: (handleHostCertificateAssignment) have host cert assignment [%s]", r.hostName)
 	if err = s.tlsCertProvider.UpdateHostCertificate(waitgroup, r.hostName, r.certKeyPair); nil != err {
 		log.Printf("ERROR: (handleHostCertificateAssignment) update host cert failed [%s]: %v", r.hostName, err)
 	}

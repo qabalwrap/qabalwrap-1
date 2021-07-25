@@ -76,6 +76,7 @@ func (s *Service) httpServerListenAndServeTLS(waitGroup *sync.WaitGroup) {
 		log.Printf("INFO: (HTTPServerService::httpServerListenAndServeTLS) http server stopped (listen-address: %s): %v", s.listenAddr, err)
 	}
 	s.serverInst = nil
+	s.serverRunning = false
 }
 
 func (s *Service) Setup(certProvider qabalwrap.CertificateProvider) (err error) {
@@ -95,6 +96,7 @@ func (s *Service) startImpl(waitGroup *sync.WaitGroup) (err error) {
 		TLSConfig: tlsCfg,
 	}
 	waitGroup.Add(1)
+	s.serverRunning = true
 	go s.httpServerListenAndServeTLS(waitGroup)
 	return
 }

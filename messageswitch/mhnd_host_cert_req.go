@@ -39,13 +39,15 @@ func handleHostCertificateRequest(s *MessageSwitch, req *hostCertRequest) (err e
 		return ErrNotSupportedOperation
 	}
 	m, err := qabalwrap.MarshalIntoClearEnvelopedMessage(s.localServiceRef.SerialIdent, req.sourceSerialIdent,
-		qabalwrap.MessageContentRootCertificateAssignment, resp)
+		qabalwrap.MessageContentHostCertificateAssignment, resp)
 	if nil != err {
 		log.Printf("WARN: (handleHostCertificateRequest) cannot marshal root certificate request: %v", err)
 		return
 	}
 	if err = s.forwardClearEnvelopedMessage(m); nil != err {
 		log.Printf("ERROR: (handleHostCertificateRequest) cannot emit enveloped message: %v", err)
+	} else {
+		log.Printf("INFO: (handleHostCertificateRequest) responed: hostname=%s, destination=%d", req.hostName, req.sourceSerialIdent)
 	}
 	return
 }

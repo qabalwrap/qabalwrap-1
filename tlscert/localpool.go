@@ -163,6 +163,7 @@ func (lc *localCerts) updateRootCert(externalRootCert *CertificateKeyPair) (chan
 		}
 	}
 	lc.RootCertKeyPair = externalRootCert
+	lc.lastModifyTimestamp = time.Now().Unix()
 	return true, nil
 }
 
