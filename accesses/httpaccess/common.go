@@ -19,10 +19,10 @@ import (
 type baseRelayProvider struct {
 	sharedSecret      [32]byte
 	messageBuffer     chan *qabalwrap.EnvelopedMessage
-	messageDispatcher *qabalwrap.MessageDispatcher
+	messageDispatcher qabalwrap.MessageDispatcher
 }
 
-func (p *baseRelayProvider) SetMessageDispatcher(dispatcher *qabalwrap.MessageDispatcher) {
+func (p *baseRelayProvider) SetMessageDispatcher(dispatcher qabalwrap.MessageDispatcher) {
 	p.messageDispatcher = dispatcher
 }
 
@@ -147,13 +147,13 @@ func (p *baseRelayProvider) dispatchMessages(b io.Reader) (dispatchedMessageCoun
 		return
 	}
 	for len(payload) > 0 {
-		var rawMsg *qabalwrap.EnvelopedMessage
-		if rawMsg, payload, err = qabalwrap.UnpackRawMessage(payload); nil != err {
+		var msg *qabalwrap.EnvelopedMessage
+		if msg, payload, err = qabalwrap.UnpackEnvelopedMessage(payload); nil != err {
 			log.Printf("ERROR: (commonRelayProviderBase::dispatchMessages) unpack into raw message failed: %v", err)
 			return
 		}
-		if rawMsg != nil {
-			p.messageDispatcher.DispatchRawMessage(rawMsg)
+		if msg != nil {
+			p.messageDispatcher.DispatchMessage(msg)
 			dispatchedMessageCount++
 		}
 	}
@@ -183,7 +183,7 @@ func (p *baseRelayProvider) initBaseRelayProvider(sharedSecretText string, messa
 	return
 }
 
-func (p *baseRelayProvider) emitMessage(ctx context.Context, rawMessage *qabalwrap.EnvelopedMessage) (err error) {
+func (p *baseRelayProvider) blockingEmitMessage(ctx context.Context, rawMessage *qabalwrap.EnvelopedMessage) (err error) {
 	select {
 	case p.messageBuffer <- rawMessage:
 		return
@@ -201,4 +201,13 @@ func (p *baseRelayProvider) emitMessage(ctx context.Context, rawMessage *qabalwr
 		<-timer.C
 	}
 	return
+}
+
+func (p *baseRelayProvider) nonblockingEmitMessage(ctx context.Context, rawMessage *qabalwrap.EnvelopedMessage) (emitSuccess bool) {
+	select {
+	case p.messageBuffer <- rawMessage:
+		return true
+	default:
+	}
+	return false
 }

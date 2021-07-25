@@ -60,7 +60,7 @@ func (s *Service) ReceiveMessage(envelopedMessage *qabalwrap.EnvelopedMessage) (
 }
 
 // SetMessageSender implement ServiceProvider interface.
-func (s *Service) SetMessageSender(messageSender *qabalwrap.MessageSender) {
+func (s *Service) SetMessageSender(messageSender qabalwrap.MessageSender) {
 	// TODO: implements
 }
 

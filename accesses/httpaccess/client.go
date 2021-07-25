@@ -244,12 +244,16 @@ func (p *HTTPClientAccessProvider) ReceiveMessage(rawMessage *qabalwrap.Envelope
 }
 
 // SetMessageSender implement ServiceProvider interface.
-func (p *HTTPClientAccessProvider) SetMessageSender(messageSender *qabalwrap.MessageSender) {
+func (p *HTTPClientAccessProvider) SetMessageSender(messageSender qabalwrap.MessageSender) {
 	// TODO: implements
 }
 
-func (p *HTTPClientAccessProvider) EmitMessage(rawMessage *qabalwrap.EnvelopedMessage) (err error) {
-	return p.emitMessage(p.ctx, rawMessage)
+func (p *HTTPClientAccessProvider) BlockingEmitMessage(rawMessage *qabalwrap.EnvelopedMessage) (err error) {
+	return p.blockingEmitMessage(p.ctx, rawMessage)
+}
+
+func (p *HTTPClientAccessProvider) NonblockingEmitMessage(rawMessage *qabalwrap.EnvelopedMessage) (emitSuccess bool) {
+	return p.nonblockingEmitMessage(p.ctx, rawMessage)
 }
 
 // RelayProviders return associated relay providers if available.

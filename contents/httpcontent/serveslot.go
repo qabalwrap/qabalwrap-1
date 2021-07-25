@@ -18,13 +18,13 @@ type httpContentTransferSlot struct {
 	slotIdent int32
 	respCh    chan *qbw1grpcgen.HTTPContentResponse
 
-	messageSender     *qabalwrap.MessageSender
+	messageSender     qabalwrap.MessageSender
 	fetcherSeriaIdent int
 
 	responseIdent int32
 }
 
-func newHTTPContentTransferSlot(ctx context.Context, slotIndex int, messageSender *qabalwrap.MessageSender, fetcherSeriaIdent int) (s *httpContentTransferSlot) {
+func newHTTPContentTransferSlot(ctx context.Context, slotIndex int, messageSender qabalwrap.MessageSender, fetcherSeriaIdent int) (s *httpContentTransferSlot) {
 	var buf [2]byte
 	io.ReadFull(rand.Reader, buf[:])
 	slotIdent := int32(((uint32(binary.LittleEndian.Uint16(buf[:])) << 16) & 0x7FFF0000) | 0x00080000 | (uint32(slotIndex) & 0xFFFF))

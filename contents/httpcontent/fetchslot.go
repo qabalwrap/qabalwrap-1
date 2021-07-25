@@ -20,12 +20,12 @@ type httpContentFetchSlot struct {
 	slotIndex       int
 	slotIdent       int32
 	reqCh           chan *qbw1grpcgen.HTTPContentRequest
-	msgSender       *qabalwrap.MessageSender
+	msgSender       qabalwrap.MessageSender
 	peerSerialIdent int
 	requestIdent    int32
 }
 
-func newHTTPContentFetchSlot(ctx context.Context, upstreamFetcher *HTTPContentFetcher, slotIndex int, msgSender *qabalwrap.MessageSender, srcSerialIdent int, requestIdent int32) (s *httpContentFetchSlot) {
+func newHTTPContentFetchSlot(ctx context.Context, upstreamFetcher *HTTPContentFetcher, slotIndex int, msgSender qabalwrap.MessageSender, srcSerialIdent int, requestIdent int32) (s *httpContentFetchSlot) {
 	var buf [2]byte
 	io.ReadFull(rand.Reader, buf[:])
 	slotIdent := int32(((uint32(binary.LittleEndian.Uint16(buf[:])) << 16) & 0x7FFF0000) | 0x00010000 | (uint32(slotIndex) & 0xFFFF))

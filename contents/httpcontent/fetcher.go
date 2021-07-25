@@ -17,7 +17,7 @@ type HTTPContentFetcher struct {
 	targetBaseURL    url.URL
 	httpHostOverride string
 
-	messageSender *qabalwrap.MessageSender
+	messageSender qabalwrap.MessageSender
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -128,6 +128,6 @@ func (hnd *HTTPContentFetcher) ReceiveMessage(envelopedMessage *qabalwrap.Envelo
 }
 
 // SetMessageSender implement ServiceProvider interface.
-func (hnd *HTTPContentFetcher) SetMessageSender(messageSender *qabalwrap.MessageSender) {
+func (hnd *HTTPContentFetcher) SetMessageSender(messageSender qabalwrap.MessageSender) {
 	hnd.messageSender = messageSender
 }

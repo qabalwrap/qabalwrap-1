@@ -17,7 +17,7 @@ type HTTPContentServeHandler struct {
 	fetcherIdent      string
 	fetcherSeriaIdent int
 
-	messageSender *qabalwrap.MessageSender
+	messageSender qabalwrap.MessageSender
 
 	lckTransferSlots        sync.Mutex
 	freeTransferSlotIndexes []int
@@ -90,16 +90,16 @@ func (hnd *HTTPContentServeHandler) isFetcherLinkAvailable() bool {
 	if hnd.fetcherSeriaIdent != qabalwrap.UnknownServiceIdent {
 		return true
 	}
-	serviceRef := hnd.messageSender.GetServiceByTextIdent(hnd.fetcherIdent)
-	if serviceRef == nil {
+	serialIdent, hasReceiver, ok := hnd.messageSender.ServiceSerialIdentByTextIdent(hnd.fetcherIdent)
+	if !ok {
 		log.Printf("ERROR: (HTTPContentServeHandler::isFetcherLinkAvailable) service reference unavailable [%s]", hnd.fetcherIdent)
 		return false
 	}
-	if !serviceRef.HasReceiver() {
+	if !hasReceiver {
 		log.Printf("ERROR: (HTTPContentServeHandler::isFetcherLinkAvailable) fetcher receiver unavailable [%s]", hnd.fetcherIdent)
 		return false
 	}
-	hnd.fetcherSeriaIdent = serviceRef.SerialIdent
+	hnd.fetcherSeriaIdent = serialIdent
 	return true
 }
 
@@ -146,7 +146,7 @@ func (hnd *HTTPContentServeHandler) ReceiveMessage(envelopedMessage *qabalwrap.E
 }
 
 // SetMessageSender implement ServiceProvider interface.
-func (hnd *HTTPContentServeHandler) SetMessageSender(messageSender *qabalwrap.MessageSender) {
+func (hnd *HTTPContentServeHandler) SetMessageSender(messageSender qabalwrap.MessageSender) {
 	hnd.messageSender = messageSender
 }
 

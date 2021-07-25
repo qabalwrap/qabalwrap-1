@@ -14,6 +14,10 @@ import (
 	yaml "gopkg.in/yaml.v3"
 
 	qabalwrap "github.com/qabalwrap/qabalwrap-1"
+	qbw1httpaccess "github.com/qabalwrap/qabalwrap-1/accesses/httpaccess"
+	qbw1httpcontent "github.com/qabalwrap/qabalwrap-1/contents/httpcontent"
+	qbw1messageswitch "github.com/qabalwrap/qabalwrap-1/messageswitch"
+	qbw1httpserver "github.com/qabalwrap/qabalwrap-1/servers/httpserver"
 )
 
 type configuration struct {
@@ -41,14 +45,14 @@ type configuration struct {
 			} `yaml:"channels"`
 		} `yaml:"http-servers"`
 		HTTPClients []*struct {
-			TextIdent         string                                 `yaml:"ident"`
-			SharedSecretText  string                                 `yaml:"shared-key"`
-			MessageBufferSize int                                    `yaml:"buffer-size"`
-			TargetServerURL   string                                 `yaml:"target-url"`
-			HTTPHostOverride  string                                 `yaml:"host-override"`
-			ChannelIndex      int                                    `yaml:"channel-index"`
-			ExchangeMode      qabalwrap.HTTPClientAccessExchangeMode `yaml:"exchange-mode"`
-			SkipTLSVerify     bool                                   `yaml:"skip-tls-verify"`
+			TextIdent         string                            `yaml:"ident"`
+			SharedSecretText  string                            `yaml:"shared-key"`
+			MessageBufferSize int                               `yaml:"buffer-size"`
+			TargetServerURL   string                            `yaml:"target-url"`
+			HTTPHostOverride  string                            `yaml:"host-override"`
+			ChannelIndex      int                               `yaml:"channel-index"`
+			ExchangeMode      qbw1httpaccess.ClientExchangeMode `yaml:"exchange-mode"`
+			SkipTLSVerify     bool                              `yaml:"skip-tls-verify"`
 		} `yaml:"http-clients"`
 	} `yaml:"access-providers"`
 	ContentEdges []*struct {
@@ -66,19 +70,19 @@ type configuration struct {
 	} `yaml:"content-fetchers"`
 }
 
-func (cfg *configuration) setupContentHTTPFetchService(ctx context.Context, msgSwitch *qabalwrap.MessageSwitch) (err error) {
+func (cfg *configuration) setupContentHTTPFetchService(ctx context.Context, msgSwitch *qbw1messageswitch.MessageSwitch) (err error) {
 	for _, opt := range cfg.ContentFetchers {
 		var targetContentURL *url.URL
 		if targetContentURL, err = url.Parse(opt.TargetContentURL); nil != err {
 			return
 		}
-		contentFetcher := qabalwrap.NewHTTPContentFetcher(targetContentURL, opt.HTTPHostOverride, opt.MaxFetchSessionCount)
-		msgSwitch.AddContentFetchProvider(opt.TextIdent, contentFetcher)
+		contentFetcher := qbw1httpcontent.NewHTTPContentFetcher(targetContentURL, opt.HTTPHostOverride, opt.MaxFetchSessionCount)
+		msgSwitch.AddServiceProvider(opt.TextIdent, contentFetcher)
 	}
 	return
 }
 
-func (cfg *configuration) setupContentHTTPEdgeService(ctx context.Context, msgSwitch *qabalwrap.MessageSwitch, httpSrvs map[string]*qabalwrap.HTTPServerService) (err error) {
+func (cfg *configuration) setupContentHTTPEdgeService(ctx context.Context, msgSwitch *qbw1messageswitch.MessageSwitch, httpSrvs map[string]*qbw1httpserver.Service) (err error) {
 	for idx, opt := range cfg.ContentEdges {
 		targetHTTPSrv := httpSrvs[opt.LinkServerIdent]
 		if targetHTTPSrv == nil {
@@ -86,14 +90,14 @@ func (cfg *configuration) setupContentHTTPEdgeService(ctx context.Context, msgSw
 				idx, opt.TextIdent, opt.LinkServerIdent)
 			return
 		}
-		contentEdge := qabalwrap.NewHTTPContentServeHandler(opt.FetcherIdent, opt.MaxTransferSessionCount)
+		contentEdge := qbw1httpcontent.NewHTTPContentServeHandler(opt.FetcherIdent, opt.MaxTransferSessionCount)
 		targetHTTPSrv.AddHostHandler(opt.HTTPHost, contentEdge)
-		msgSwitch.AddContentEdgeProvider(opt.TextIdent, contentEdge)
+		msgSwitch.AddServiceProvider(opt.TextIdent, contentEdge)
 	}
 	return
 }
 
-func (cfg *configuration) setupAccessProviderHTTPServerService(ctx context.Context, msgSwitch *qabalwrap.MessageSwitch, httpSrvs map[string]*qabalwrap.HTTPServerService) (err error) {
+func (cfg *configuration) setupAccessProviderHTTPServerService(ctx context.Context, msgSwitch *qbw1messageswitch.MessageSwitch, httpSrvs map[string]*qbw1httpserver.Service) (err error) {
 	for idx, opt := range cfg.AccessProviders.HTTPServers {
 		targetHTTPSrv := httpSrvs[opt.LinkServerIdent]
 		if targetHTTPSrv == nil {
@@ -101,49 +105,48 @@ func (cfg *configuration) setupAccessProviderHTTPServerService(ctx context.Conte
 				idx, opt.TextIdent, opt.LinkServerIdent)
 			return
 		}
-		accessChannels := make([]*qabalwrap.HTTPServeAccessChannel, len(opt.AccessChannels))
+		provider := qbw1httpaccess.NewHTTPServeAccessProvider(len(opt.AccessChannels))
 		for chIdx, chOpt := range opt.AccessChannels {
-			var chInst *qabalwrap.HTTPServeAccessChannel
-			if chInst, err = qabalwrap.NewHTTPServeAccessChannel(ctx, chOpt.SharedSecretText, chOpt.MessageBufferSize); nil != err {
+			if _, err = provider.AddAccessChannel(ctx, chIdx, chOpt.SharedSecretText, chOpt.MessageBufferSize); nil != err {
 				log.Printf("ERROR: cannot create HTTP server access provider (channel=%d, index=%d, ident=%s): %v", chIdx, idx, opt.TextIdent, err)
 				return
 			}
-			accessChannels[chIdx] = chInst
-			msgSwitch.AddRelayProvider(chInst)
 		}
-		provider := qabalwrap.NewHTTPServeAccessProvider(accessChannels)
 		targetHTTPSrv.AddHostHandler(opt.HTTPHost, provider)
-		msgSwitch.AddAccessProviderService(opt.TextIdent, provider)
+		if err = msgSwitch.AddServiceProvider(opt.TextIdent, provider); nil != err {
+			log.Printf("ERROR: (setupAccessProviderHTTPServerService) add service provider failed: %v", err)
+			return
+		}
 	}
 	return
 }
 
-func (cfg *configuration) setupAccessProviderHTTPClientService(ctx context.Context, msgSwitch *qabalwrap.MessageSwitch) (err error) {
+func (cfg *configuration) setupAccessProviderHTTPClientService(ctx context.Context, msgSwitch *qbw1messageswitch.MessageSwitch) (err error) {
 	for idx, opt := range cfg.AccessProviders.HTTPClients {
 		var targetServerURL *url.URL
 		if targetServerURL, err = url.Parse(opt.TargetServerURL); nil != err {
 			log.Printf("ERROR: cannot parse URL of access HTTP server access provider (index=%d, ident=%s): %v", idx, opt.TextIdent, err)
 			return
 		}
-		var provider *qabalwrap.HTTPClientAccessProvider
-		if provider, err = qabalwrap.NewHTTPClientAccessProvider(ctx, opt.SharedSecretText, opt.MessageBufferSize, targetServerURL, opt.HTTPHostOverride, opt.ChannelIndex, opt.ExchangeMode, opt.SkipTLSVerify); nil != err {
+		var provider *qbw1httpaccess.HTTPClientAccessProvider
+		if provider, err = qbw1httpaccess.NewHTTPClientAccessProvider(ctx, opt.SharedSecretText, opt.MessageBufferSize, targetServerURL, opt.HTTPHostOverride, opt.ChannelIndex, opt.ExchangeMode, opt.SkipTLSVerify); nil != err {
 			log.Printf("ERROR: cannot create HTTP client access provider (index=%d, ident=%s): %v", idx, opt.TextIdent, err)
 			return
 		}
-		msgSwitch.AddRelayProvider(provider)
-		msgSwitch.AddAccessProviderService(opt.TextIdent, provider)
+		// msgSwitch.AddRelayProvider(provider)
+		msgSwitch.AddServiceProvider(opt.TextIdent, provider)
 	}
 	return
 }
 
-func (cfg *configuration) makeInstance() (ctx context.Context, cancel context.CancelFunc, msgSwitch *qabalwrap.MessageSwitch, err error) {
+func (cfg *configuration) makeInstance() (ctx context.Context, cancel context.CancelFunc, msgSwitch *qbw1messageswitch.MessageSwitch, err error) {
 	msgSwitchStateStore, err := qabalwrap.NewStateStore(cfg.StateFolder, qabalwrap.ServiceTypeTextMessageSwitch, cfg.MessageSwitch.TextIdent)
 	if nil != err {
 		log.Printf("ERROR: cannot setup state store for message switch [%s]: %v", cfg.MessageSwitch.TextIdent, err)
 		return
 	}
 	ctx, cancel = context.WithCancel(context.Background())
-	if msgSwitch, err = qabalwrap.NewMessageSwitch(
+	if msgSwitch, err = qbw1messageswitch.NewMessageSwitch(
 		msgSwitchStateStore,
 		cfg.MessageSwitch.TextIdent,
 		cfg.MessageSwitch.DN.Country, cfg.MessageSwitch.DN.Organization,
@@ -151,9 +154,9 @@ func (cfg *configuration) makeInstance() (ctx context.Context, cancel context.Ca
 		log.Printf("ERROR: cannot setup message switch [%s]: %v", cfg.MessageSwitch.TextIdent, err)
 		return
 	}
-	httpSrvs := make(map[string]*qabalwrap.HTTPServerService)
+	httpSrvs := make(map[string]*qbw1httpserver.Service)
 	for _, opt := range cfg.HTTPServers {
-		srv := qabalwrap.NewHTTPServerService(opt.ListenAddr)
+		srv := qbw1httpserver.NewService(opt.ListenAddr)
 		httpSrvs[opt.TextIdent] = srv
 	}
 	if err = cfg.setupAccessProviderHTTPServerService(ctx, msgSwitch, httpSrvs); nil != err {
@@ -173,7 +176,7 @@ func (cfg *configuration) makeInstance() (ctx context.Context, cancel context.Ca
 		return
 	}
 	for ident, srv := range httpSrvs {
-		if _, err = msgSwitch.AddHTTPServerService(ident, srv); nil != err {
+		if err = msgSwitch.AddServiceProvider(ident, srv); nil != err {
 			log.Printf("ERROR: cannot attach HTTP server service to switch (ident=%s): %v", ident, err)
 			return
 		}
@@ -280,7 +283,7 @@ func (cfg *configuration) normalizeAccessProviderHTTPClients(textIdentSet map[st
 			err = fmt.Errorf("option `target-url` is required but %d-th (%s) `access-providers/http-clients` got empty value", idx+1, opts.TextIdent)
 			return
 		}
-		if opts.ExchangeMode == qabalwrap.HTTPClientAccessUnknownMode {
+		if opts.ExchangeMode == qbw1httpaccess.ClientUnknownExchangeMode {
 			err = fmt.Errorf("option `exchange-mode` is required but %d-th (%s) `access-providers/http-clients` got empty or invalid value", idx+1, opts.TextIdent)
 			return
 		}

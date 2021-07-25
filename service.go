@@ -1,6 +1,7 @@
 package qabalwrap
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/tls"
 	"log"
@@ -10,6 +11,7 @@ import (
 	keybinary "github.com/go-marshaltemabu/go-keybinary"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/nacl/box"
+	"google.golang.org/protobuf/proto"
 )
 
 // MaxServiceIdentLength define max length of service identifier.
@@ -191,31 +193,75 @@ type AccessProvider interface {
 	ServiceProvider
 }
 
+type MessageSender interface {
+	// Send given message into message switch.
+	Send(destServiceIdent int, messageContentType MessageContentType, messageContent proto.Message)
+
+	// ServiceSerialIdentByTextIdent lookup service serial identifier with given text identifier.
+	ServiceSerialIdentByTextIdent(textIdent string) (serialIdent int, hasReceiver, ok bool)
+}
+
+type MessageDispatcher interface {
+	// DispatchMessage pass message into message switch.
+	DispatchMessage(m *EnvelopedMessage)
+}
+
 type RelayProvider interface {
 	// SetMessageDispatcher should update dispatcher for this instance if relay provider.
 	// This method is invoked on register this instance with message switch.
-	SetMessageDispatcher(dispatcher *MessageDispatcher)
+	SetMessageDispatcher(dispatcher MessageDispatcher)
 
 	// EmitMessage send given message through this provider.
-	EmitMessage(rawMessage *RawMessage) (err error)
+	// Will invoke concurrently at operating stage.
+	BlockingEmitMessage(envelopedMessage *EnvelopedMessage) (err error)
 
-	// Start relay operation.
-	Start(waitGroup *sync.WaitGroup)
+	// NonblockingEmitMessage send given message through this provider in non-blocking way.
+	// Will invoke concurrently at operating stage.
+	NonblockingEmitMessage(envelopedMessage *EnvelopedMessage) (emitSuccess bool)
+
+	// Deprecated: Start relay operation.
+	// Start(waitGroup *sync.WaitGroup) (err error)
+}
+
+type CertificateSubscriber interface {
+	// UpdateHostTLSCertificates trigger host TLS update of service.
+	// Should only invoke at maintenance thread in setup stage and runtime stage.
+	UpdateHostTLSCertificates(waitGroup *sync.WaitGroup, tlsCerts []tls.Certificate) (err error)
 }
 
 type CertificateProvider interface {
-	// GetHostTLSCertificates fetch certificates for given host names.
+	// Deprecated: GetHostTLSCertificates fetch certificates for given host names.
 	GetHostTLSCertificates(hostNames []string) (tlsCerts []tls.Certificate, err error)
+
+	// RegisterHostTLSCertificates request certificates for given host names.
+	// Should only invoke at maintenance thread in setup stage.
+	RegisterHostTLSCertificates(hostNames []string, certSubscriber CertificateSubscriber) (hostTLSCertWatchTrackIdent int, err error)
 }
 
 // ServiceProvider define interface for services.
 type ServiceProvider interface {
+	// Setup prepare provider for operation.
+	// Should only invoke at maintenance thread in setup stage.
+	Setup(certProvider CertificateProvider) (err error)
+
+	// Start service instance for operation.
+	// Should only invoke at maintenance thread in setup stage.
+	Start(ctx context.Context, waitGroup *sync.WaitGroup) (err error)
+
+	// Stop service instance,
+	Stop()
+
 	// ReceiveMessage deliver message into this instance of service provider.
 	// The message should decypted before pass into this method.
-	ReceiveMessage(rawMessage *RawMessage) (err error)
+	// Will invoke concurrently at operating stage.
+	ReceiveMessage(envelopedMessage *EnvelopedMessage) (err error)
 
 	// SetMessageSender bind given sender with this instance of service provider.
-	SetMessageSender(messageSender *MessageSender)
+	SetMessageSender(messageSender MessageSender)
+
+	// RelayProviders return associated relay providers if available.
+	// Return nil if this service provider does not support relay service.
+	RelayProviders() (relayProviders []RelayProvider)
 
 	// SwitchAvailable is invoked when message switch is available.
 	//SwitchAvailable()

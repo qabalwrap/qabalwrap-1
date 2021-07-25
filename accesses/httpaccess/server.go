@@ -88,9 +88,14 @@ func (p *serverAccessChannel) Start(ctx context.Context, waitGroup *sync.WaitGro
 	return
 }
 
-func (p *serverAccessChannel) EmitMessage(rawMessage *qabalwrap.EnvelopedMessage) (err error) {
+func (p *serverAccessChannel) BlockingEmitMessage(rawMessage *qabalwrap.EnvelopedMessage) (err error) {
 	// log.Printf("TRACE: (HTTPServeAccessChannel::EmitMessage) s=%d, d=%d, hop=%d", rawMessage.SourceServiceIdent, rawMessage.DestinationServiceIdent, rawMessage.RemainHops)
-	return p.emitMessage(p.ctx, rawMessage)
+	return p.blockingEmitMessage(p.ctx, rawMessage)
+}
+
+func (p *serverAccessChannel) NonblockingEmitMessage(rawMessage *qabalwrap.EnvelopedMessage) (emitSuccess bool) {
+	// log.Printf("TRACE: (HTTPServeAccessChannel::EmitMessage) s=%d, d=%d, hop=%d", rawMessage.SourceServiceIdent, rawMessage.DestinationServiceIdent, rawMessage.RemainHops)
+	return p.nonblockingEmitMessage(p.ctx, rawMessage)
 }
 
 type HTTPServeAccessProvider struct {
@@ -151,7 +156,7 @@ func (p *HTTPServeAccessProvider) ReceiveMessage(rawMessage *qabalwrap.Enveloped
 }
 
 // SetMessageSender implement SqabalwraperviceProvider interface.
-func (p *HTTPServeAccessProvider) SetMessageSender(messageSender *qabalwrap.MessageSender) {
+func (p *HTTPServeAccessProvider) SetMessageSender(messageSender qabalwrap.MessageSender) {
 	// TODO: implements
 }
 
