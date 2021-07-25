@@ -15,6 +15,7 @@ message KnownServiceIdents {
 	int32 primary_serial_ident = 1;
 	int32 max_serial_ident = 2;
 	repeated ServiceIdent service_idents = 3;
+	int64 generation_timestamp = 4;
 }
 
 message AllocateServiceIdentsRequest {
