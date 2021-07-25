@@ -46,7 +46,13 @@ func (b *crossBar) Init(
 	return
 }
 
-// func (b *crossBar) send(srcServiceIdent, destServiceIdent int32)
+func (b *crossBar) emptyServiceConnects() {
+	b.connectsBySerialIdent = nil
+	b.connectsByTextIdent = make(map[string]*serviceConnect)
+	b.connectsByUUID = make(map[uuid.UUID]*serviceConnect)
+	b.unassignConnects = nil
+	b.connectsModifyAt = 0
+}
 
 // load service references from storage.
 // Must only invoke on setup stage.
@@ -56,13 +62,16 @@ func (b *crossBar) load(stateStore *qabalwrap.StateStore) (ok bool, err error) {
 		log.Printf("ERROR: (crossBar::load) unmarshal service references failed: %v", err)
 		return
 	} else if !ok {
+		b.emptyServiceConnects()
 		return
 	} else if len(serviceRefs) < 2 {
 		log.Printf("WARN: (crossBar::load) unpacked service reference too less: %d.", len(serviceRefs))
+		b.emptyServiceConnects()
 		return
 	}
 	maxSerialIdent := findMaxServiceSerialIdent(serviceRefs)
 	if maxSerialIdent < qabalwrap.AssignableServiceIdentMin {
+		b.emptyServiceConnects()
 		return
 	}
 	connectsBySerialIdent := make([]*serviceConnect, maxSerialIdent+1)
