@@ -65,8 +65,10 @@ func (p *Provider) updateSubscribedHostTLSCert(waitGroup *sync.WaitGroup, subscr
 		}
 		tlsCerts = append(tlsCerts, *cert)
 	}
-	if err = subscriptionRec.certSubscriber.UpdateHostTLSCertificates(waitGroup, tlsCerts); nil == err {
-		log.Printf("ERROR: (updateSubscribedHostTLSCert) update certificate complete: %v", err)
+	if err = subscriptionRec.certSubscriber.UpdateHostTLSCertificates(waitGroup, tlsCerts); nil != err {
+		log.Printf("ERROR: (updateSubscribedHostTLSCert) update certificate failed: %v", err)
+	} else {
+		log.Print("INFO: (updateSubscribedHostTLSCert) update certificate complete.")
 	}
 	return
 }
