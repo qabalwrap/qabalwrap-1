@@ -214,6 +214,7 @@ func (s *MessageSwitch) emitRelayHeartbeat() (linkLostRelay []int) {
 
 func (s *MessageSwitch) emitAllocateServiceIdentsRequest() {
 	if s.primarySwitch {
+		log.Print("TRACE: (MessageSwitch::requestServiceSerialAssignment) skip emitAllocateServiceIdentsRequest on primary switch.")
 		return
 	}
 	primaryLink := s.crossBar.getServiceConnectBySerial(qabalwrap.PrimaryMessageSwitchServiceIdent)
@@ -234,10 +235,13 @@ func (s *MessageSwitch) emitAllocateServiceIdentsRequest() {
 	if err = primaryLink.emitMessage(m); nil != err {
 		log.Printf("ERROR: (MessageSwitch::requestServiceSerialAssignment) cannot emit enveloped message: %v", err)
 	}
+	log.Printf("TRACE: (MessageSwitch::requestServiceSerialAssignment) emitted for (%d) services.",
+		len(reqMsg.ServiceIdents))
 }
 
 func (s *MessageSwitch) emitRootCertificateRequest() {
 	if s.tlsCertProvider.HaveRootCertificate() {
+		log.Print("TRACE: (MessageSwitch::emitRootCertificateRequest) skip emitRootCertificateRequest as root certificate existed.")
 		return
 	}
 	if primaryLink := s.crossBar.getServiceConnectBySerial(qabalwrap.PrimaryMessageSwitchServiceIdent); (primaryLink == nil) || (!primaryLink.linkAvailable()) {
@@ -307,6 +311,7 @@ func (s *MessageSwitch) maintenanceWorks(ctx context.Context, waitGroup *sync.Wa
 		case hostCertAssign := <-s.hostCertificateAssignments:
 			handleHostCertificateAssignment(waitGroup, s, hostCertAssign)
 		case <-ticker.C:
+			log.Print("TRACE: (MessageSwitch::maintenanceWorks) run tick routine.")
 			lostedRelay := s.emitRelayHeartbeat()
 			s.crossBar.relayLinksLosted(lostedRelay)
 			s.emitAllocateServiceIdentsRequest()
