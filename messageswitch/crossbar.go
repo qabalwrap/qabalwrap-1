@@ -120,7 +120,7 @@ func (b *crossBar) collectServiceReferencesForSave() (serviceRefs []*ServiceRefe
 
 func (b *crossBar) save(stateStore *qabalwrap.StateStore) (err error) {
 	serviceRefs := b.collectServiceReferencesForSave()
-	return stateStore.Marshal(localServiceRefContentIdent, serviceRefs)
+	return stateStore.Marshal(serviceRefsContentIdent, serviceRefs)
 }
 
 // addRelayProviders fetch relay providers from given serviceProvider.
