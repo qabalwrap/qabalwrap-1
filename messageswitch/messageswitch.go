@@ -230,6 +230,9 @@ func (s *MessageSwitch) emitAllocateServiceIdentsRequest() {
 		log.Printf("ERROR: (MessageSwitch::requestServiceSerialAssignment) cannot make AllocateServiceIdentsRequest: %v", err)
 		return
 	}
+	if reqMsg == nil {
+		return
+	}
 	m, err := qabalwrap.MarshalIntoClearEnvelopedMessage(qabalwrap.AccessProviderPeerServiceIdent, qabalwrap.AccessProviderPeerServiceIdent, qabalwrap.MessageContentAllocateServiceIdentsRequest, reqMsg)
 	if nil != err {
 		log.Printf("ERROR: (MessageSwitch::requestServiceSerialAssignment) cannot create enveloped message: %v", err)
