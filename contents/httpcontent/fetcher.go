@@ -95,8 +95,18 @@ func (hnd *HTTPContentFetcher) ServeHTTP(w http.ResponseWriter, r *http.Request)
 
 func (hnd *HTTPContentFetcher) processContentRequest(srcSerialIdent int, m *qbw1grpcgen.HTTPContentRequest) {
 	if m.ResponseIdent != 0 {
-		fetchSlot := hnd.getFetchSlot(m.ResponseIdent)
-		fetchSlot.reqCh <- m
+		if fetchSlot := hnd.getFetchSlot(m.ResponseIdent); fetchSlot != nil {
+			fetchSlot.reqCh <- m
+			return
+		} else {
+			resp := qbw1grpcgen.HTTPContentResponse{
+				RequestIdent:    m.RequestIdent,
+				ResultStateCode: http.StatusServiceUnavailable,
+				ContentBody:     []byte("fetch slot released"),
+				IsComplete:      true,
+			}
+			hnd.messageSender.Send(srcSerialIdent, qabalwrap.MessageContentHTTPContentResponse, &resp)
+		}
 		return
 	}
 	fetchSlot := hnd.allocateFetchSlot(hnd.ctx, srcSerialIdent, m.RequestIdent)
