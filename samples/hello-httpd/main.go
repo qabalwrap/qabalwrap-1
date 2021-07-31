@@ -3,8 +3,13 @@ package main
 import (
 	"errors"
 	"flag"
+	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"sync/atomic"
 	"time"
 
 	utilhttphandlers "github.com/yinyin/go-util-http-handlers"
@@ -21,9 +26,25 @@ type helloHTTPResponse struct {
 type helloHTTPHandler struct {
 	messageText string
 	startAt     time.Time
+	dumpCounter int32
 }
 
 func (hnd *helloHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if (r.Method == http.MethodPost) || (r.Method == http.MethodPut) {
+		cnt := atomic.AddInt32(&hnd.dumpCounter, 1)
+		targetFilePath := filepath.Join(os.TempDir(), "d-"+strconv.FormatInt(int64(cnt), 10)+".blob")
+		fp, err := os.Create(targetFilePath)
+		if nil != err {
+			log.Printf("ERROR: cannot open file for dumping input [%s] for [%s]: %v", targetFilePath, r.URL.Path, err)
+		} else {
+			defer fp.Close()
+			if _, err = io.Copy(fp, r.Body); nil != err {
+				log.Printf("ERROR: copy input into [%s] for [%s]: %v", targetFilePath, r.URL.Path, err)
+			} else {
+				log.Printf("INFO: copy input into [%s] for [%s]", targetFilePath, r.URL.Path)
+			}
+		}
+	}
 	utilhttphandlers.JSONResponseWithStatusOK(w, &helloHTTPResponse{
 		MessageText: hnd.messageText,
 		StartAt:     hnd.startAt,
