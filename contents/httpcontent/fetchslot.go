@@ -74,25 +74,35 @@ func (slot *httpContentFetchSlot) run(req *qbw1grpcgen.HTTPContentRequest) {
 	if req.IsComplete {
 		if len(req.ContentBody) > 0 {
 			httpReq, err = http.NewRequestWithContext(slot.ctx, req.RequestMethod, targetURL.String(), bytes.NewReader(req.ContentBody))
+			// log.Printf("TRACE: (httpContentFetchSlot::run) request method=%s, url=[%s] with content (len=%d)", req.RequestMethod, targetURL.String(), len(req.ContentBody))
 		} else {
 			httpReq, err = http.NewRequestWithContext(slot.ctx, req.RequestMethod, targetURL.String(), nil)
+			// log.Printf("TRACE: (httpContentFetchSlot::run) request method=%s, url=[%s] without content", req.RequestMethod, targetURL.String())
 		}
 	} else {
 		reqBodyReader, reqBodyWriter := io.Pipe()
 		httpReq, err = http.NewRequestWithContext(slot.ctx, req.RequestMethod, targetURL.String(), reqBodyReader)
+		// log.Printf("TRACE: (httpContentFetchSlot::run) request method=%s, url=[%s] with large content", req.RequestMethod, targetURL.String())
 		go func() {
+			if len(req.ContentBody) > 0 {
+				reqBodyWriter.Write(req.ContentBody)
+			}
 			for {
 				req1 := <-slot.reqCh
 				if req1 == nil {
+					// log.Printf("TRACE: (httpContentFetchSlot::run) request method=%s, url=[%s] empty request-1", req.RequestMethod, targetURL.String())
 					break
 				}
 				if len(req1.ContentBody) > 0 {
+					// log.Printf("TRACE: (httpContentFetchSlot::run) request method=%s, url=[%s] content part (len=%d)", req.RequestMethod, targetURL.String(), len(req1.ContentBody))
 					reqBodyWriter.Write(req1.ContentBody)
 				}
 				if req1.IsComplete {
+					// log.Printf("TRACE: (httpContentFetchSlot::run) request method=%s, url=[%s] request complete", req.RequestMethod, targetURL.String())
 					break
 				}
 			}
+			// log.Printf("TRACE: (httpContentFetchSlot::run) request method=%s, url=[%s] leaving content write", req.RequestMethod, targetURL.String())
 			reqBodyWriter.Close()
 		}()
 	}
