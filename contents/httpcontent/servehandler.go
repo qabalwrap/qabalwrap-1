@@ -73,8 +73,11 @@ func (hnd *HTTPContentServeHandler) getTransferSlot(transferSlotIdent int32) (tr
 		log.Printf("WARN: (HTTPContentServeHandler::getTransferSlot) index out of range: %d, %d", transferSlotIdent, idx)
 		return
 	}
-	if (hnd.transferSlots[idx] == nil) || (hnd.transferSlots[idx].slotIdent != transferSlotIdent) {
-		log.Printf("WARN: (HTTPContentServeHandler::getTransferSlot) identifier not match: %d, %d", transferSlotIdent, idx)
+	if hnd.transferSlots[idx] == nil {
+		log.Printf("WARN: (HTTPContentServeHandler::getTransferSlot) identifier not existed: ident=%d, idx=%d", transferSlotIdent, idx)
+		return
+	} else if hnd.transferSlots[idx].slotIdent != transferSlotIdent {
+		log.Printf("WARN: (HTTPContentServeHandler::getTransferSlot) identifier not match: ident=%d, idx=%d", transferSlotIdent, idx)
 		return
 	}
 	transferSlot = hnd.transferSlots[idx]

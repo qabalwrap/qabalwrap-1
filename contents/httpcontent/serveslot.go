@@ -74,7 +74,7 @@ func (slot *httpContentTransferSlot) serveRegular(w http.ResponseWriter, r *http
 		IsComplete:    reqCompleted,
 	}
 	slot.sendToPeer(req0)
-	// log.Printf("TRACE: (serveRegular) emit request [%s / %s] complete=%v, buf-size=%d", r.Host, r.URL.Path, reqCompleted, len(reqContentBuf))
+	log.Printf("TRACE: (serveRegular) slot %d [%s / %s] remote=<%s> complete=%v, buf-size=%d.", slot.slotIdent, r.Host, r.URL.Path, r.RemoteAddr, reqCompleted, len(reqContentBuf))
 	select {
 	case resp := <-slot.respCh:
 		if resp == nil {
@@ -83,6 +83,7 @@ func (slot *httpContentTransferSlot) serveRegular(w http.ResponseWriter, r *http
 			return
 		}
 		slot.responseIdent = resp.ResponseIdent
+		log.Printf("TRACE: (serveRegular) slot %d bind with response %d.", slot.slotIdent, resp.ResponseIdent)
 		if resp.IsComplete {
 			if resp.ResultStateCode != 0 {
 				w.WriteHeader(int(resp.ResultStateCode))
