@@ -46,7 +46,13 @@ func (p *Provider) Init(
 }
 
 func (p *Provider) updateSubscribedHostTLSCert(waitGroup *sync.WaitGroup, subscriptionRec *subscribedHostTLSCerts) (err error) {
-	tlsCerts := make([]tls.Certificate, 0, len(subscriptionRec.hostNameSerials))
+	tlsCerts := make([]tls.Certificate, 0, len(subscriptionRec.hostNameSerials)+1)
+	cert, err := MakeSelfSignedHostTLSCertificate(defaultCountry, defaultOrganization, defaultTLSHostAddress)
+	if nil != err {
+		log.Printf("ERROR: (updateSubscribedHostTLSCert) prepare default TLS certificate failed: %v", err)
+		return
+	}
+	tlsCerts = append(tlsCerts, *cert)
 	for hostN := range subscriptionRec.hostNameSerials {
 		var cert *tls.Certificate
 		var keyPair *CertificateKeyPair

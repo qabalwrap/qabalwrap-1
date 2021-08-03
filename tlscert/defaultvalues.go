@@ -12,4 +12,10 @@ const (
 	selfSignedCertValidDuration = time.Hour * 8
 )
 
+const (
+	defaultCountry        = "XQ"
+	defaultOrganization   = "Snack Oil Co."
+	defaultTLSHostAddress = "default-85f45c9e.example.net"
+)
+
 // const certificateRequestExpireSeconds = 180
