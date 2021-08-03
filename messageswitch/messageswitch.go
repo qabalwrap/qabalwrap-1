@@ -205,12 +205,14 @@ func (s *MessageSwitch) checkCrossBarServiceConnectChanged() {
 	}
 }
 
+// emitRelayHeartbeat send heartbeat to relaies and collect losted relaies.
+// Invoked by maintenance routine.
 func (s *MessageSwitch) emitRelayHeartbeat() (linkLostRelay []int) {
 	for _, dispatcher := range s.messageDispatchers {
 		if dispatcher.shouldEmitHeartbeat() {
 			dispatcher.emitHeartbeatPing()
 		}
-		if !dispatcher.checkLinkHeartbeat() {
+		if !dispatcher.checkLinkTrafficStatus() {
 			linkLostRelay = append(linkLostRelay, dispatcher.relayIndex)
 		}
 	}

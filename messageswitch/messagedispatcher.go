@@ -14,7 +14,7 @@ import (
 
 const pingEmitPeriod = time.Second * 100
 
-const maxAcceptablePingPongLostSecond = 300
+const maxAcceptableMessageCountFreeze = time.Minute * 5
 
 const maxAcceptableHopCount = 7
 
@@ -23,12 +23,14 @@ type messageDispatcher struct {
 	relayInst     qabalwrap.RelayProvider
 	messageSwitch *MessageSwitch
 
+	messageCount uint32
+
 	lastKnownServiceIdentsDigest md5digest.MD5Digest
 
 	lastEmitPing time.Time // check by maintenance thread to see if need send ping
 
-	lastReceivePing int64
-	lastReceivePong int64
+	lastChangedMessageCount  uint32
+	lastMessageCountChangeAt time.Time
 }
 
 func newMessageDispatcher(
@@ -36,12 +38,11 @@ func newMessageDispatcher(
 	relayInst qabalwrap.RelayProvider,
 	messageSwitch *MessageSwitch) (d *messageDispatcher) {
 	return &messageDispatcher{
-		relayIndex:      relayIndex,
-		relayInst:       relayInst,
-		messageSwitch:   messageSwitch,
-		lastEmitPing:    time.Now(),
-		lastReceivePing: time.Now().Unix(),
-		lastReceivePong: time.Now().Unix(),
+		relayIndex:               relayIndex,
+		relayInst:                relayInst,
+		messageSwitch:            messageSwitch,
+		lastEmitPing:             time.Now(),
+		lastMessageCountChangeAt: time.Now(),
 	}
 }
 
@@ -49,17 +50,22 @@ func (d *messageDispatcher) shouldEmitHeartbeat() bool {
 	return (time.Since(d.lastEmitPing) > pingEmitPeriod)
 }
 
-func (d *messageDispatcher) checkLinkHeartbeat() bool {
-	currentTimestamp := time.Now().Unix()
-	if t := (currentTimestamp - atomic.LoadInt64(&d.lastReceivePing)); t > maxAcceptablePingPongLostSecond {
-		log.Printf("ERROR: (messageDispatcher::checkLinkHeartbeat) not receiving ping %d seconds.", t)
-		return false
+// Invoked by maintenance routine.
+func (d *messageDispatcher) checkLinkTrafficStatus() bool {
+	currentMessageCount := atomic.LoadUint32(&d.messageCount)
+	if currentMessageCount != d.lastChangedMessageCount {
+		d.lastChangedMessageCount = currentMessageCount
+		d.lastMessageCountChangeAt = time.Now()
+		return true
 	}
-	if t := (currentTimestamp - atomic.LoadInt64(&d.lastReceivePong)); t > maxAcceptablePingPongLostSecond {
-		log.Printf("ERROR: (messageDispatcher::checkLinkHeartbeat) not receiving pong %d seconds.", t)
-		return false
+	freezeDuration := time.Since(d.lastMessageCountChangeAt)
+	if freezeDuration < maxAcceptableMessageCountFreeze {
+		return true
 	}
-	return true
+	log.Printf("ERROR: (checkLinkTrafficStatus) relay traffic freeze (relay-index=%d, duration=%v)",
+		d.relayIndex, freezeDuration)
+	return false
+
 }
 
 func (d *messageDispatcher) emitHeartbeatPing() {
@@ -120,7 +126,6 @@ func (d *messageDispatcher) processPeerPing(m *qabalwrap.EnvelopedMessage) {
 		log.Printf("ERROR: (messageDispatcher::processPeerPing) cannot emit ping message (relay-index=%d): %v", d.relayIndex, err)
 		return
 	}
-	atomic.StoreInt64(&d.lastReceivePing, time.Now().Unix())
 }
 
 func (d *messageDispatcher) processPeerPong(m *qabalwrap.EnvelopedMessage) {
@@ -131,7 +136,6 @@ func (d *messageDispatcher) processPeerPong(m *qabalwrap.EnvelopedMessage) {
 	}
 	costNanoSec := time.Now().UnixNano() - hbPong.CreateTimestamp
 	log.Printf("INFO: heartbeat ping-pong cost: %d (ns)", costNanoSec)
-	atomic.StoreInt64(&d.lastReceivePong, time.Now().Unix())
 }
 
 func (d *messageDispatcher) processPeerAllocateServiceIdentsRequest(m *qabalwrap.EnvelopedMessage) {
@@ -161,6 +165,7 @@ func (d *messageDispatcher) processPeerMessage(m *qabalwrap.EnvelopedMessage) {
 }
 
 func (d *messageDispatcher) DispatchMessage(m *qabalwrap.EnvelopedMessage) {
+	atomic.AddUint32(&d.messageCount, 1)
 	if m.DestinationServiceIdent == qabalwrap.AccessProviderPeerServiceIdent {
 		d.processPeerMessage(m)
 		return
