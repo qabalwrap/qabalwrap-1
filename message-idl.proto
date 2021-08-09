@@ -9,10 +9,12 @@ message ServiceIdent {
 	string text_ident = 3;
 	bytes public_key = 4;
 	int32 link_hop_count = 5;
+	int32 link_hop_switch_serial_ident = 6;
 }
 
 message KnownServiceIdents {
 	int32 primary_serial_ident = 1;
+	int32 local_switch_serial_ident = 5;
 	int32 max_serial_ident = 2;
 	repeated ServiceIdent service_idents = 3;
 	int64 generation_timestamp = 4;

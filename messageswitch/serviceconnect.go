@@ -4,7 +4,6 @@ import (
 	"log"
 	"sort"
 	"sync"
-	"sync/atomic"
 
 	"github.com/google/uuid"
 
@@ -17,7 +16,9 @@ type serviceConnect struct {
 
 	// linkHopCount is overall hop count from this node to given service.
 	// The value should modify in maintenance thread at setup stage, concurrent read in messaging threads.
-	linkHopCountVal int32
+	lckLinkHopCount               sync.Mutex
+	linkHopCountValue             int
+	linkhopCountSwitchSerialIdent int
 
 	// relayStatsByHop and relayStatsByIndex contain stats for relays.
 	// Ths slices will be `nil` if referenced service a local service.
@@ -55,7 +56,7 @@ func removeServiceConnectAtIndex(conns []*serviceConnect, targetIndex int) []*se
 	}
 }
 
-func fillKnownServiceIdentsMessage(msg *qbw1grpcgen.KnownServiceIdents, refs []*serviceConnect) (err error) {
+func fillKnownServiceIdentsMessage(msg *qbw1grpcgen.KnownServiceIdents, refs []*serviceConnect, localSwitchSerialIdent int) (err error) {
 	if len(refs) < 1 {
 		return
 	}
@@ -75,16 +76,20 @@ func fillKnownServiceIdentsMessage(msg *qbw1grpcgen.KnownServiceIdents, refs []*
 		if srvRef.SerialIdent > maxSerialIdent {
 			maxSerialIdent = srvRef.SerialIdent
 		}
-		linkHopCount := int32(srvRef.linkHopCount())
+		linkHopCountValue, linkHopSwitchSerialIdent := srvRef.linkHopStat()
+		if linkHopCountValue == 0 {
+			linkHopSwitchSerialIdent = localSwitchSerialIdent
+		}
 		srvIdent := qbw1grpcgen.ServiceIdent{
-			UniqueIdent:  srvRef.UniqueIdent.String(),
-			SerialIdent:  int32(srvRef.SerialIdent),
-			TextIdent:    srvRef.TextIdent,
-			PublicKey:    publicKeyBuf,
-			LinkHopCount: linkHopCount,
+			UniqueIdent:              srvRef.UniqueIdent.String(),
+			SerialIdent:              int32(srvRef.SerialIdent),
+			TextIdent:                srvRef.TextIdent,
+			PublicKey:                publicKeyBuf,
+			LinkHopCount:             int32(linkHopCountValue),
+			LinkHopSwitchSerialIdent: int32(linkHopSwitchSerialIdent),
 		}
 		serviceIdents = append(serviceIdents, &srvIdent)
-		log.Printf("TRACE: (fillKnownServiceIdentsMessage) %d/%s hop=%d.", srvRef.SerialIdent, srvRef.TextIdent, linkHopCount)
+		log.Printf("TRACE: (fillKnownServiceIdentsMessage) %d/%s hop=%d:%d.", srvRef.SerialIdent, srvRef.TextIdent, linkHopCountValue, linkHopSwitchSerialIdent)
 	}
 	msg.MaxSerialIdent = int32(maxSerialIdent)
 	if len(serviceIdents) > 0 {
@@ -95,23 +100,34 @@ func fillKnownServiceIdentsMessage(msg *qbw1grpcgen.KnownServiceIdents, refs []*
 
 func newServiceConnect(serviceRef *ServiceReference) (c *serviceConnect) {
 	c = &serviceConnect{
-		ServiceReference: *serviceRef,
-		linkHopCountVal:  int32(maxLinkHopCount),
+		ServiceReference:  *serviceRef,
+		linkHopCountValue: maxLinkHopCount,
 	}
 	return
 }
 
-func (c *serviceConnect) linkHopCount() int {
-	v := atomic.LoadInt32(&c.linkHopCountVal)
-	return int(v)
+func (c *serviceConnect) linkHopStat() (countValue, switchSerialIdent int) {
+	c.lckLinkHopCount.Lock()
+	defer c.lckLinkHopCount.Unlock()
+	countValue = c.linkHopCountValue
+	switchSerialIdent = c.linkhopCountSwitchSerialIdent
+	return
+}
+
+func (c *serviceConnect) setLinkHopStat(countValue, switchSerialIdent int) {
+	c.lckLinkHopCount.Lock()
+	defer c.lckLinkHopCount.Unlock()
+	c.linkHopCountValue = countValue
+	c.linkhopCountSwitchSerialIdent = switchSerialIdent
 }
 
 func (c *serviceConnect) linkAvailable() bool {
-	return (c.linkHopCount() < maxLinkHopCount)
+	linkHopCountVal, _ := c.linkHopStat()
+	return (linkHopCountVal < maxLinkHopCount)
 }
 
 func (c *serviceConnect) setServiceProvider(serviceProvider qabalwrap.ServiceProvider) {
-	atomic.StoreInt32(&c.linkHopCountVal, 0)
+	c.setLinkHopStat(0, qabalwrap.UnknownServiceIdent)
 	c.serviceProvider = serviceProvider
 }
 
@@ -136,7 +152,7 @@ func (c *serviceConnect) setMessageSender(s *MessageSwitch) {
 	log.Printf("INFO: associate service provider (%d) with message sender.", c.SerialIdent)
 }
 
-func (c *serviceConnect) updateRelayHopCount(relayIndex, hopCount int) {
+func (c *serviceConnect) updateRelayHopCount(relayIndex, hopCount, relaySwitchSerialIdent int) {
 	if c.serviceProvider != nil {
 		return
 	}
@@ -146,16 +162,17 @@ func (c *serviceConnect) updateRelayHopCount(relayIndex, hopCount int) {
 	}
 	c.lckRelayStats.Lock()
 	defer c.lckRelayStats.Unlock()
-	c.relayStatsByIndex[relayIndex].hopCount = hopCount
+	c.relayStatsByIndex[relayIndex].updateHopStat(hopCount, relaySwitchSerialIdent)
 	sort.Sort(serviceRelayByHopCount(c.relayStatsByHop))
 	if len(c.relayStatsByHop) == 0 {
 		return
 	}
 	minHopCount := c.relayStatsByHop[0].hopCount
+	srcSwitchSerialIdent := c.relayStatsByHop[0].hopSwitchSerialIdent
 	if minHopCount < maxLinkHopCount {
 		minHopCount++
 	}
-	atomic.StoreInt32(&c.linkHopCountVal, int32(minHopCount))
+	c.setLinkHopStat(minHopCount, srcSwitchSerialIdent)
 }
 
 func (c *serviceConnect) relayProvidersInEmitOrder() (relayProviders []qabalwrap.RelayProvider) {

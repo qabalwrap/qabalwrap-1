@@ -14,8 +14,14 @@ const (
 // serviceRelay keep relay status for service instance.
 // The content of this struct should only modify from maintenance thread.
 type serviceRelay struct {
-	hopCount     int
-	providerInst qabalwrap.RelayProvider
+	hopCount             int
+	hopSwitchSerialIdent int
+	providerInst         qabalwrap.RelayProvider
+}
+
+func (a *serviceRelay) updateHopStat(countValue, switchSerialIdent int) {
+	a.hopCount = countValue
+	a.hopSwitchSerialIdent = switchSerialIdent
 }
 
 type serviceRelayByHopCount []*serviceRelay
@@ -36,8 +42,9 @@ func newServiceRelays(relayProviders []qabalwrap.RelayProvider) (serviceRelays [
 	serviceRelays = make([]*serviceRelay, len(relayProviders))
 	for relayIndex, providerInst := range relayProviders {
 		serviceRelays[relayIndex] = &serviceRelay{
-			hopCount:     maxLinkHopCount,
-			providerInst: providerInst,
+			hopCount:             maxLinkHopCount,
+			hopSwitchSerialIdent: qabalwrap.UnknownServiceIdent,
+			providerInst:         providerInst,
 		}
 	}
 	return

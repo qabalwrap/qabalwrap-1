@@ -30,6 +30,11 @@ func newKnownServiceIdentsNotifyHandler(s *MessageSwitch) (h knownServiceIdentsN
 }
 
 func (h *knownServiceIdentsNotifyHandler) handleAsPrimarySwitch(notice *knownServiceIdentsNotify) {
+	localSwitchSerialIdent := h.s.localServiceRef.SerialIdent
+	remoteSwitchSerialIdent := int(notice.knownServiceIdents.LocalSwitchSerialIdent)
+	if remoteSwitchSerialIdent == 0 {
+		remoteSwitchSerialIdent = qabalwrap.UnknownServiceIdent
+	}
 	relayIndex := notice.relayIndex
 	for _, svrIdent := range notice.knownServiceIdents.ServiceIdents {
 		conn := h.s.crossBar.getServiceConnectBySerial(int(svrIdent.SerialIdent))
@@ -42,11 +47,19 @@ func (h *knownServiceIdentsNotifyHandler) handleAsPrimarySwitch(notice *knownSer
 				svrIdent.SerialIdent, svrIdent.TextIdent, conn.TextIdent)
 			continue
 		}
-		conn.updateRelayHopCount(relayIndex, int(svrIdent.LinkHopCount))
+		if switchSerialIdent := svrIdent.LinkHopSwitchSerialIdent; (switchSerialIdent == int32(localSwitchSerialIdent)) || (switchSerialIdent == 0) || (switchSerialIdent == qabalwrap.UnknownServiceIdent) {
+			continue
+		}
+		conn.updateRelayHopCount(relayIndex, int(svrIdent.LinkHopCount), remoteSwitchSerialIdent)
 	}
 }
 
 func (h *knownServiceIdentsNotifyHandler) handleAsOrdinarySwitch(notice *knownServiceIdentsNotify) {
+	localSwitchSerialIdent := h.s.localServiceRef.SerialIdent
+	remoteSwitchSerialIdent := int(notice.knownServiceIdents.LocalSwitchSerialIdent)
+	if remoteSwitchSerialIdent == 0 {
+		remoteSwitchSerialIdent = qabalwrap.UnknownServiceIdent
+	}
 	relayIndex := notice.relayIndex
 	h.s.crossBar.expandServiceConnectsSlice(int(notice.knownServiceIdents.MaxSerialIdent))
 	for _, svrIdent := range notice.knownServiceIdents.ServiceIdents {
@@ -61,7 +74,10 @@ func (h *knownServiceIdentsNotifyHandler) handleAsOrdinarySwitch(notice *knownSe
 			log.Printf("WARN: (knownServiceIdentsNotifyHandler::handleAsPrimarySwitch) cannot reach service connect (serial-ident=%d)", svrIdent.SerialIdent)
 			continue
 		}
-		conn.updateRelayHopCount(relayIndex, int(svrIdent.LinkHopCount))
+		if switchSerialIdent := svrIdent.LinkHopSwitchSerialIdent; (switchSerialIdent == int32(localSwitchSerialIdent)) || (switchSerialIdent == 0) || (switchSerialIdent == qabalwrap.UnknownServiceIdent) {
+			continue
+		}
+		conn.updateRelayHopCount(relayIndex, int(svrIdent.LinkHopCount), remoteSwitchSerialIdent)
 	}
 	h.s.crossBar.setServiceZeroSerialIdent(int(notice.knownServiceIdents.PrimarySerialIdent))
 }

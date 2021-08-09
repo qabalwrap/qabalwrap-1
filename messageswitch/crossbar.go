@@ -175,7 +175,7 @@ func (b *crossBar) relayLinkLosted(relayIndex int) {
 		if conn == nil {
 			continue
 		}
-		conn.updateRelayHopCount(relayIndex, maxLinkHopCount)
+		conn.updateRelayHopCount(relayIndex, maxLinkHopCount, qabalwrap.UnknownServiceIdent)
 	}
 }
 
@@ -400,16 +400,17 @@ func (b *crossBar) makeUnassignedServiceConnectsSnapshot() (connects []*serviceC
 	return
 }
 
-func (b *crossBar) makeKnownServiceIdentsSnapshot() (msg *qbw1grpcgen.KnownServiceIdents, err error) {
+func (b *crossBar) makeKnownServiceIdentsSnapshot(localSwitchSerialIdent int) (msg *qbw1grpcgen.KnownServiceIdents, err error) {
 	msg = &qbw1grpcgen.KnownServiceIdents{
-		PrimarySerialIdent: qabalwrap.UnknownServiceIdent,
+		PrimarySerialIdent:     qabalwrap.UnknownServiceIdent,
+		LocalSwitchSerialIdent: int32(localSwitchSerialIdent),
 	}
 	b.lckConnects.Lock()
 	defer b.lckConnects.Unlock()
 	if len(b.connectsBySerialIdent) <= 0 {
 		return
 	}
-	if err = fillKnownServiceIdentsMessage(msg, b.connectsBySerialIdent); nil != err {
+	if err = fillKnownServiceIdentsMessage(msg, b.connectsBySerialIdent, localSwitchSerialIdent); nil != err {
 		log.Printf("ERROR: (makeKnownServiceIdentsSnapshot) cannot fulfill known service identifiers message: %v", err)
 		return
 	}

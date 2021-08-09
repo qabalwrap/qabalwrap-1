@@ -108,7 +108,7 @@ func (s *MessageSwitch) forwardClearEnvelopedMessage(msg *qabalwrap.EnvelopedMes
 	if nil != err {
 		return
 	}
-	if hopCount := destServiceConn.linkHopCount(); hopCount == 0 {
+	if hopCount, _ := destServiceConn.linkHopStat(); hopCount == 0 {
 		err = destServiceConn.serviceProvider.ReceiveMessage(msg)
 	} else if hopCount < maxLinkHopCount {
 		precompSharedKey := s.precomputedKeys.getEncryptSharedKey(srcServiceConn, destServiceConn)
@@ -129,7 +129,7 @@ func (s *MessageSwitch) forwardEncryptedEnvelopedMessage(msg *qabalwrap.Envelope
 	if nil != err {
 		return
 	}
-	if hopCount := destServiceConn.linkHopCount(); hopCount == 0 {
+	if hopCount, _ := destServiceConn.linkHopStat(); hopCount == 0 {
 		precompSharedKey := s.precomputedKeys.getDecryptSharedKey(srcServiceConn, destServiceConn)
 		if err = msg.Decrypt(precompSharedKey); nil != err {
 			return
@@ -144,7 +144,7 @@ func (s *MessageSwitch) forwardEncryptedEnvelopedMessage(msg *qabalwrap.Envelope
 }
 
 func (s *MessageSwitch) buildKnownServiceIdentsMessage() (msg *qabalwrap.EnvelopedMessage, digest md5digest.MD5Digest, err error) {
-	knownServiceIdents, err := s.crossBar.makeKnownServiceIdentsSnapshot()
+	knownServiceIdents, err := s.crossBar.makeKnownServiceIdentsSnapshot(s.localServiceRef.SerialIdent)
 	if nil != err {
 		log.Printf("ERROR: (MessageSwitch::buildKnownServiceIdentsMessage) cannot have known service idents: %v", err)
 		return
