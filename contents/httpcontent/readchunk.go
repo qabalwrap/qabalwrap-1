@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const maxChunkReadDelay = time.Millisecond * 100
+const maxChunkReadDelay = time.Millisecond * 500
 
 func readBytesChunk(fullBuf []byte, bodyReader io.ReadCloser) (loadedBuf []byte, completed bool, err error) {
 	remain := len(fullBuf)

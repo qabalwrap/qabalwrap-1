@@ -129,7 +129,7 @@ func (slot *httpContentFetchSlot) run(req *qbw1grpcgen.HTTPContentRequest) {
 		return
 	}
 	defer resp.Body.Close()
-	respContentFullBuf := make([]byte, 1024)
+	respContentFullBuf := make([]byte, 1024*16)
 	respContentBuf, respCompleted, err := readBytesChunk(respContentFullBuf, resp.Body)
 	if nil != err {
 		slot.errorToPeer(err)
