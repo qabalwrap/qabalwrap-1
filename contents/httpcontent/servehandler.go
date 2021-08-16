@@ -121,7 +121,7 @@ func (hnd *HTTPContentServeHandler) ServeHTTP(w http.ResponseWriter, r *http.Req
 	transferSlot.serve(w, r)
 }
 
-func (hnd *HTTPContentServeHandler) processContentResponse(m *qbw1grpcgen.HTTPContentResponse) {
+func (hnd *HTTPContentServeHandler) processContentResponse(m *qbw1grpcgen.HTTPContentResponse, sourceServiceIdent int) {
 	if m.RequestIdent == 0 {
 		log.Printf("WARN: (HTTPContentFetcher::processContentResponse) empty request identifier: response-ident=%d", m.ResponseIdent)
 		return
@@ -129,6 +129,10 @@ func (hnd *HTTPContentServeHandler) processContentResponse(m *qbw1grpcgen.HTTPCo
 	transferSlot := hnd.getTransferSlot(m.RequestIdent)
 	if transferSlot == nil {
 		log.Printf("WARN: (HTTPContentFetcher::processContentResponse) transfer slot is gone: request-ident=%d, response-ident=%d", m.RequestIdent, m.ResponseIdent)
+		hnd.messageSender.Send(sourceServiceIdent, qabalwrap.MessageContentHTTPContentLinkClosed, &qbw1grpcgen.HTTPContentLinkClosed{
+			RequestIdent:  m.RequestIdent,
+			ResponseIdent: m.ResponseIdent,
+		})
 		return
 	}
 	transferSlot.respCh <- m
@@ -143,7 +147,7 @@ func (hnd *HTTPContentServeHandler) ReceiveMessage(envelopedMessage *qabalwrap.E
 			log.Printf("ERROR: (HTTPContentServeHandler::ReceiveMessage) unmarshal response failed: %v", err)
 			return
 		}
-		hnd.processContentResponse(&req)
+		hnd.processContentResponse(&req, envelopedMessage.SourceServiceIdent)
 	default:
 		log.Printf("WARN: (HTTPContentServeHandler::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", envelopedMessage.SourceServiceIdent, envelopedMessage.DestinationServiceIdent, envelopedMessage.MessageContentType())
 	}

@@ -28,6 +28,7 @@ const (
 	MessageContentHTTPContentResponse
 	MessageContentHeartbeatPing
 	MessageContentHeartbeatPong
+	MessageContentHTTPContentLinkClosed
 	MessageContentTypeBoundary
 )
 
@@ -43,6 +44,7 @@ var DefaultMessageHops = [...]int{
 	5, // MessageContentHTTPContentResponse
 	1, // MessageContentHeartbeatPing
 	1, // MessageContentHeartbeatPong
+	5, // MessageContentHTTPContentLinkClosed
 }
 
 // ErrMessageContentTooSmall indicate the message content is too small for content.

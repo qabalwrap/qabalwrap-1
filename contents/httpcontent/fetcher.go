@@ -123,16 +123,35 @@ func (hnd *HTTPContentFetcher) processContentRequest(srcSerialIdent int, m *qbw1
 	go fetchSlot.run(m)
 }
 
+func (hnd *HTTPContentFetcher) processLinkClosed(m *qbw1grpcgen.HTTPContentLinkClosed) {
+	if m.ResponseIdent == 0 {
+		return
+	}
+	if fetchSlot := hnd.getFetchSlot(m.ResponseIdent); fetchSlot != nil {
+		fetchSlot.cancel()
+		log.Printf("TRACE: cancelled closed link: response-ident=%d.", m.ResponseIdent)
+	} else {
+		log.Printf("TRACE: closed link not existed anymore: response-ident=%d.", m.ResponseIdent)
+	}
+}
+
 // ReceiveMessage implement ServiceProvider interface.
 func (hnd *HTTPContentFetcher) ReceiveMessage(envelopedMessage *qabalwrap.EnvelopedMessage) (err error) {
 	switch envelopedMessage.MessageContentType() {
 	case qabalwrap.MessageContentHTTPContentRequest:
 		var req qbw1grpcgen.HTTPContentRequest
 		if err = envelopedMessage.Unmarshal(&req); nil != err {
-			log.Printf("ERROR: (HTTPContentFetcher::ReceiveMessage) unmarshal request failed: %v", err)
+			log.Printf("ERROR: (HTTPContentFetcher::ReceiveMessage::ContentRequest) unmarshal request failed: %v", err)
 			return
 		}
 		hnd.processContentRequest(envelopedMessage.SourceServiceIdent, &req)
+	case qabalwrap.MessageContentHTTPContentLinkClosed:
+		var req qbw1grpcgen.HTTPContentLinkClosed
+		if err = envelopedMessage.Unmarshal(&req); nil != err {
+			log.Printf("ERROR: (HTTPContentFetcher::ReceiveMessage::LinkClosed) unmarshal request failed: %v", err)
+			return
+		}
+		hnd.processLinkClosed(&req)
 	default:
 		log.Printf("WARN: (HTTPContentFetcher::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", envelopedMessage.SourceServiceIdent, envelopedMessage.DestinationServiceIdent, envelopedMessage.MessageContentType())
 	}

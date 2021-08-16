@@ -16,6 +16,7 @@ import (
 
 type httpContentFetchSlot struct {
 	ctx             context.Context
+	cancel          context.CancelFunc
 	upstreamFetcher *HTTPContentFetcher
 	slotIndex       int
 	slotIdent       int32
@@ -29,8 +30,10 @@ func newHTTPContentFetchSlot(ctx context.Context, upstreamFetcher *HTTPContentFe
 	var buf [2]byte
 	io.ReadFull(rand.Reader, buf[:])
 	slotIdent := int32(((uint32(binary.LittleEndian.Uint16(buf[:])) << 16) & 0x7FFF0000) | 0x00010000 | (uint32(slotIndex) & 0xFFFF))
+	ctx, cancel := context.WithCancel(ctx)
 	s = &httpContentFetchSlot{
 		ctx:             ctx,
+		cancel:          cancel,
 		upstreamFetcher: upstreamFetcher,
 		slotIndex:       slotIndex,
 		slotIdent:       slotIdent,
@@ -60,15 +63,7 @@ func (slot *httpContentFetchSlot) runWebSocket(targetURL *url.URL, h http.Header
 
 }
 
-func (slot *httpContentFetchSlot) run(req *qbw1grpcgen.HTTPContentRequest) {
-	defer slot.close()
-	targetURL := slot.upstreamFetcher.targetBaseURL
-	targetURL.Path = req.UrlPath
-	targetURL.RawQuery = req.UrlQuery
-	if req.RequestMethod == httpContentRequestMethodWebSocket {
-		slot.runWebSocket(&targetURL, req.GetHeadersHTTPHeader())
-		return
-	}
+func (slot *httpContentFetchSlot) runRegular(targetURL *url.URL, req *qbw1grpcgen.HTTPContentRequest) {
 	var httpReq *http.Request
 	var err error
 	if req.IsComplete {
@@ -159,10 +154,23 @@ func (slot *httpContentFetchSlot) run(req *qbw1grpcgen.HTTPContentRequest) {
 	}
 }
 
+func (slot *httpContentFetchSlot) run(req *qbw1grpcgen.HTTPContentRequest) {
+	defer slot.close()
+	targetURL := slot.upstreamFetcher.targetBaseURL
+	targetURL.Path = req.UrlPath
+	targetURL.RawQuery = req.UrlQuery
+	if req.RequestMethod == httpContentRequestMethodWebSocket {
+		slot.runWebSocket(&targetURL, req.GetHeadersHTTPHeader())
+	} else {
+		slot.runRegular(&targetURL, req)
+	}
+}
+
 func (slot *httpContentFetchSlot) release() {
 	close(slot.reqCh)
 }
 
 func (slot *httpContentFetchSlot) close() {
+	slot.cancel()
 	slot.upstreamFetcher.releaseFetchSlot(slot)
 }

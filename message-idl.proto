@@ -71,6 +71,11 @@ message HTTPContentResponse {
 	bool is_complete = 6;
 }
 
+message HTTPContentLinkClosed {
+	int32 request_ident = 1;
+	int32 response_ident = 2;
+}
+
 message HeartbeatPingPong {
 	int64 create_timestamp = 1;
 	int64 receive_timestamp = 2;
