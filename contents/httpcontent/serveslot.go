@@ -69,7 +69,7 @@ func (slot *httpContentTransferSlot) serveRegular(w http.ResponseWriter, r *http
 		UrlQuery:      r.URL.RawQuery,
 		RequestMethod: r.Method,
 		RequestHost:   r.Host,
-		Headers:       qbw1grpcgen.NewKeyValuesFromHTTPHeader(r.Header),
+		Headers:       qbw1grpcgen.NewKeyValuesFromHTTPHeader(prepareFetchRequestHeader(r)),
 		ContentBody:   reqContentBuf,
 		IsComplete:    reqCompleted,
 	}
