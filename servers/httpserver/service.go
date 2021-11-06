@@ -91,7 +91,7 @@ func (s *Service) Setup(certProvider qabalwrap.CertificateProvider) (err error) 
 func (s *Service) startImpl(waitGroup *sync.WaitGroup) (err error) {
 	tlsCfg := &tls.Config{
 		PreferServerCipherSuites: true,
-		MinVersion:               tls.VersionTLS12,
+		MinVersion:               tls.VersionTLS13,
 		Certificates:             s.tlsCerts,
 	}
 	s.serverInst = &http.Server{
