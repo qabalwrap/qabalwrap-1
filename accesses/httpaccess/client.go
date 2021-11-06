@@ -19,6 +19,8 @@ import (
 
 const HTTPClientAccessProviderUserAgent = "qabalwrap-access/0.0.0"
 
+const clientLinkCleanCycle = time.Minute * 15
+
 type ClientExchangeMode int32
 
 const (
@@ -181,6 +183,7 @@ func (p *HTTPClientAccessProvider) exchangeLoop(waitGroup *sync.WaitGroup) {
 	collectTimeout := slowEmptyMessageCollectTimeout
 	var failureCount int
 	var currentSessionTimestamp int64
+	lastIdleClientCleanup := time.Now()
 	for {
 		var exportedMessageCount, dispatchedMessageCount int
 		var err error
@@ -233,6 +236,10 @@ func (p *HTTPClientAccessProvider) exchangeLoop(waitGroup *sync.WaitGroup) {
 			collectTimeout = fastEmptyMessageCollectTimeout
 		} else {
 			collectTimeout = slowEmptyMessageCollectTimeout
+		}
+		if time.Since(lastIdleClientCleanup) > clientLinkCleanCycle {
+			p.clientInst.CloseIdleConnections()
+			lastIdleClientCleanup = time.Now()
 		}
 	}
 }
