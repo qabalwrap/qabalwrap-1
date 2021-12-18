@@ -49,7 +49,13 @@
 protoc --proto_path=. --go_out=./gen/qbw1grpcgen --go_opt=paths=source_relative message-idl.proto
 ```
 
-### Service Binary
+## Diagnosis RPC Stub
+
+```sh
+protoc -I ./ ./diagnosis-idl.proto --go_out=./gen/qbw1diagrpcgen --go_opt=paths=source_relative --go-grpc_out=./gen/qbw1diagrpcgen --go-grpc_opt=paths=source_relative
+```
+
+## Service Binary
 
 ```sh
 go build github.com/qabalwrap/qabalwrap-1/cmd/qabalwrapd

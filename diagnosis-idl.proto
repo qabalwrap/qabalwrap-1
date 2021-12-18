@@ -1,0 +1,35 @@
+syntax = "proto3";
+package qabalwrap1diag;
+
+option go_package = "github.com/qabalwrap/qabalwrap-1/gen/qbw1diagrpcgen";
+
+// {{{ REV-CONTENT 5e21bf02abab228cb9effad19f8e758b
+
+service Qabalwrap1DiagnosisGRPC {
+	rpc Ping(PingRequest) returns (PingReply);
+
+	rpc ReadTrace(ReadTraceRequest) returns (stream TraceRecord);
+}
+
+message PingRequest {
+}
+
+message PingReply {
+	int64 timestamp = 1;
+	int32 process_ident = 2;
+}
+
+message ReadTraceRequest {
+	string client_instance_ident = 1;
+}
+
+message TraceRecord {
+	int32 trace_ident = 1;
+	int32 span_ident = 2;
+	int32 parent_span_ident = 3;
+	int32 trace_type = 4;
+	int64 emit_at = 5;
+	string message_text = 6;
+}
+
+// }}} REV-CONTENT 5e21bf02abab228cb9effad19f8e758b
