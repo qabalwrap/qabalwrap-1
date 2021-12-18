@@ -5,6 +5,11 @@ message-switch:
     c: 'TW'
     o: 'QabalWrap-1 Development Work'
   primary: true
+diagnosis-socket:
+  ident: 'diag-0'
+  listen: ":3927"
+  serial-prefix: 1
+  trace-buffer: 256
 http-servers:
   - ident: 'http1'
     listen: ":8080"

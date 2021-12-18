@@ -30,6 +30,12 @@ type configuration struct {
 		} `yaml:"dn"`
 		PrimaryEnablement bool `yaml:"primary"`
 	} `yaml:"message-switch"`
+	DiagnosisSocket struct {
+		TextIdent    string `yaml:"ident"`
+		ListenAddr   string `yaml:"listen"`
+		SerialPrefix int    `yaml:"serial-prefix"`
+		TraceBuffer  int    `yaml:"trace-buffer"`
+	} `yaml:"diagnosis-socket"`
 	HTTPServers []*struct {
 		TextIdent  string `yaml:"ident"`
 		ListenAddr string `yaml:"listen"`
@@ -206,6 +212,23 @@ func (cfg *configuration) normalizeMessageSwitch(textIdentSet map[string]struct{
 	return
 }
 
+func (cfg *configuration) normalizeDiagnosisSocket(textIdentSet map[string]struct{}) (err error) {
+	if cfg.DiagnosisSocket.TextIdent == "" {
+		return
+	}
+	cfg.DiagnosisSocket.TextIdent = strings.ToLower(cfg.DiagnosisSocket.TextIdent)
+	if aux := identnormalize.AlphabetNumberDashOnlyIdentifier(cfg.DiagnosisSocket.TextIdent, qabalwrap.MaxServiceIdentLength); aux != cfg.DiagnosisSocket.TextIdent {
+		err = fmt.Errorf("invalid `ident` of diagnosis socket: %s => %s", cfg.DiagnosisSocket.TextIdent, aux)
+		return
+	}
+	if _, ok := textIdentSet[cfg.DiagnosisSocket.TextIdent]; ok {
+		err = fmt.Errorf("given `ident` of diagnosis socket existed: %s", cfg.DiagnosisSocket.TextIdent)
+		return
+	}
+	textIdentSet[cfg.DiagnosisSocket.TextIdent] = struct{}{}
+	return
+}
+
 func (cfg *configuration) normalizeHTTPServers(textIdentSet map[string]struct{}) (err error) {
 	for idx, opts := range cfg.HTTPServers {
 		if opts.TextIdent == "" {
@@ -370,6 +393,9 @@ func (cfg *configuration) normalize() (err error) {
 	}
 	textIdentSet := make(map[string]struct{})
 	if err = cfg.normalizeMessageSwitch(textIdentSet); nil != err {
+		return
+	}
+	if err = cfg.normalizeDiagnosisSocket(textIdentSet); nil != err {
 		return
 	}
 	if err = cfg.normalizeHTTPServers(textIdentSet); nil != err {
