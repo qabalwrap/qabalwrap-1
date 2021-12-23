@@ -17,6 +17,7 @@ import (
 	qbw1httpaccess "github.com/qabalwrap/qabalwrap-1/accesses/httpaccess"
 	qbw1httpcontent "github.com/qabalwrap/qabalwrap-1/contents/httpcontent"
 	qbw1messageswitch "github.com/qabalwrap/qabalwrap-1/messageswitch"
+	qbw1diagnosissocket "github.com/qabalwrap/qabalwrap-1/servers/diagnosissocket"
 	qbw1httpserver "github.com/qabalwrap/qabalwrap-1/servers/httpserver"
 )
 
@@ -74,6 +75,15 @@ type configuration struct {
 		HTTPHostOverride     string `yaml:"host-override"`
 		MaxFetchSessionCount int    `yaml:"max-work-links"`
 	} `yaml:"content-fetchers"`
+}
+
+func (cfg *configuration) setupDiagnosisSocketService(ctx context.Context, msgSwitch *qbw1messageswitch.MessageSwitch) (err error) {
+	if cfg.DiagnosisSocket.TextIdent == "" {
+		return
+	}
+	diagnosisSocketSrv := qbw1diagnosissocket.NewDiagnosisSocketServer(cfg.DiagnosisSocket.ListenAddr)
+	msgSwitch.AddServiceProvider(cfg.DiagnosisSocket.TextIdent, diagnosisSocketSrv)
+	return
 }
 
 func (cfg *configuration) setupContentHTTPFetchService(ctx context.Context, msgSwitch *qbw1messageswitch.MessageSwitch) (err error) {
@@ -151,13 +161,19 @@ func (cfg *configuration) makeInstance() (ctx context.Context, cancel context.Ca
 		log.Printf("ERROR: cannot setup state store for message switch [%s]: %v", cfg.MessageSwitch.TextIdent, err)
 		return
 	}
+	diag := qabalwrap.NewDiagnosisEmitter(int8(cfg.DiagnosisSocket.SerialPrefix), cfg.DiagnosisSocket.TraceBuffer)
 	ctx, cancel = context.WithCancel(context.Background())
 	if msgSwitch, err = qbw1messageswitch.NewMessageSwitch(
 		msgSwitchStateStore,
+		diag,
 		cfg.MessageSwitch.TextIdent,
 		cfg.MessageSwitch.DN.Country, cfg.MessageSwitch.DN.Organization,
 		cfg.MessageSwitch.PrimaryEnablement); nil != err {
 		log.Printf("ERROR: cannot setup message switch [%s]: %v", cfg.MessageSwitch.TextIdent, err)
+		return
+	}
+	if err = cfg.setupDiagnosisSocketService(ctx, msgSwitch); nil != err {
+		log.Printf("ERROR: setup diagnosis RPC service failed: %v", err)
 		return
 	}
 	httpSrvs := make(map[string]*qbw1httpserver.Service)

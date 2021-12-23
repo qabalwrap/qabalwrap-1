@@ -11,7 +11,7 @@ type ServiceBase struct{}
 
 // Setup prepare provider for operation.
 // Should only invoke at maintenance thread in setup stage.
-func (s *ServiceBase) Setup(certProvider CertificateProvider) (err error) {
+func (s *ServiceBase) Setup(diag *DiagnosisEmitter, certProvider CertificateProvider) (err error) {
 	return
 }
 

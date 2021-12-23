@@ -25,6 +25,8 @@ type MessageSwitch struct {
 
 	stateStore *qabalwrap.StateStore
 
+	diagnosisEmitter *qabalwrap.DiagnosisEmitter
+
 	tlsCertProvider qw1tlscert.Provider
 	crossBar        crossBar
 	precomputedKeys precomputedKeyCache
@@ -44,11 +46,13 @@ type MessageSwitch struct {
 // NewMessageSwitch create new instance of MessageSwitch.
 func NewMessageSwitch(
 	stateStore *qabalwrap.StateStore,
+	diag *qabalwrap.DiagnosisEmitter,
 	textIdent, dnCountry, dnOrganization string,
 	primarySwitch bool) (s *MessageSwitch, err error) {
 	aux := &MessageSwitch{
 		primarySwitch:                 primarySwitch,
 		stateStore:                    stateStore,
+		diagnosisEmitter:              diag,
 		notifyPeerKnownServiceIdents:  make(chan *knownServiceIdentsNotify, 2),
 		notifyRelayLinkEstablished:    make(chan int, 2),
 		allocateServiceIdentsRequests: make(chan *ServiceReference, 2),
@@ -355,7 +359,9 @@ func (s *MessageSwitch) maintenanceWorks(ctx context.Context, waitGroup *sync.Wa
 	log.Print("TRACE: (MessageSwitch::maintenanceWorks) maintenance work loop stopped.")
 }
 
-func (s *MessageSwitch) Setup(certProvider qabalwrap.CertificateProvider) (err error) {
+func (s *MessageSwitch) Setup(
+	diagnosisEmitter *qabalwrap.DiagnosisEmitter,
+	certProvider qabalwrap.CertificateProvider) (err error) {
 	return
 }
 
@@ -382,7 +388,7 @@ func (s *MessageSwitch) AddServiceProvider(textIdent string, serviceProvider qab
 	if err = s.crossBar.attachServiceProvider(textIdent, serviceProvider); nil != err {
 		return
 	}
-	if err = serviceProvider.Setup(&s.tlsCertProvider); nil != err {
+	if err = serviceProvider.Setup(s.diagnosisEmitter, &s.tlsCertProvider); nil != err {
 		return
 	}
 	s.localServices = append(s.localServices, serviceProvider)

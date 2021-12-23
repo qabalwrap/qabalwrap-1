@@ -68,7 +68,7 @@ type CertificateProvider interface {
 type ServiceProvider interface {
 	// Setup prepare provider for operation.
 	// Should only invoke at maintenance thread in setup stage.
-	Setup(certProvider CertificateProvider) (err error)
+	Setup(diagnosisEmitter *DiagnosisEmitter, certProvider CertificateProvider) (err error)
 
 	// Start service instance for operation.
 	// Should only invoke at maintenance thread in setup stage.

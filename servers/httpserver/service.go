@@ -24,6 +24,8 @@ type Service struct {
 	maxHostLength int
 
 	tlsCerts []tls.Certificate
+
+	diagnosisEmitter *qabalwrap.DiagnosisEmitter
 }
 
 func NewService(listenAddr string) (s *Service) {
@@ -79,12 +81,13 @@ func (s *Service) httpServerListenAndServeTLS(waitGroup *sync.WaitGroup) {
 	s.serverRunning = false
 }
 
-func (s *Service) Setup(certProvider qabalwrap.CertificateProvider) (err error) {
+func (s *Service) Setup(diagnosisEmitter *qabalwrap.DiagnosisEmitter, certProvider qabalwrap.CertificateProvider) (err error) {
 	hostNames := make([]string, 0, len(s.hostHandlers))
 	for hostName := range s.hostHandlers {
 		hostNames = append(hostNames, hostName)
 	}
 	_, err = certProvider.RegisterHostTLSCertificates(hostNames, s)
+	s.diagnosisEmitter = diagnosisEmitter
 	return
 }
 
