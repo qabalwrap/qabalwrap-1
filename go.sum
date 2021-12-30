@@ -53,6 +53,8 @@ github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/ad
 github.com/grpc-ecosystem/grpc-gateway v1.16.0/go.mod h1:BDjrQk3hbvj6Nolgz8mAMFbcEtjT1g+wF4CSlocrBnw=
 github.com/nangantata/go-identnormalize v0.0.2 h1:P1yhxv7tP2PwfBIVivqxZk3KTfquRHslvl2loDhsN5Q=
 github.com/nangantata/go-identnormalize v0.0.2/go.mod h1:/29UFIHXYsuIC6njP1RbuUaMM8kIA1O09Ge1cI9NcYM=
+github.com/nangantata/go-instanceident v0.1.0 h1:9tvE7DNNtX6/Jd/jBkoYiBQ9ADOBI40pMQqOlRjoI1c=
+github.com/nangantata/go-instanceident v0.1.0/go.mod h1:aw0/rVT6hNWvrclVGHc90PrYEQyMBsOaYw8+IgQNq/M=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4/go.mod h1:xMI15A0UPsDsEKsMN9yxemIoYk6Tm2C1GtYGdfGttqA=
 github.com/rogpeppe/fastuuid v1.2.0/go.mod h1:jVj6XXZzXRy/MSR5jhDC/2q6DgLz+nrA6LYCDYWNEvQ=

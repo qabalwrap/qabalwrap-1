@@ -85,8 +85,10 @@ func (d *DiagnosisSocketServer) Start(ctx context.Context, waitGroup *sync.WaitG
 	}
 	if nil != err {
 		log.Printf("ERROR: (DiagnosisSocketServer.Start) failed to listen (%v): %v", d.listenAddr, err)
+		grpcServer.Stop()
 		return
 	}
+	d.grpcServer = grpcServer
 	waitGroup.Add(1)
 	go d.serveImpl(listener, waitGroup)
 	return
