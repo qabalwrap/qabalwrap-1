@@ -8,7 +8,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.4.2
 	github.com/nangantata/go-identnormalize v0.0.2
-	github.com/nangantata/go-instanceident v0.1.0 // indirect
+	github.com/nangantata/go-instanceident v0.1.0
 	github.com/yinyin/go-util-http-handlers v0.13.0
 	golang.org/x/crypto v0.0.0-20211202192323-5770296d904e
 	golang.org/x/sys v0.0.0-20211205182925-97ca703d548d
