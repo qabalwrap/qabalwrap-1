@@ -23,7 +23,15 @@ const (
 	TraceFinish
 	TraceSpanStart
 	TraceSpanFinish
+	eventTagBegin
+	EventInfo
+	EventWarning
+	EventError
+	eventTagEnd
+	LinkedTrace
 )
+
+var eventTagText = [...]string{"DEBUG:", "INFO:", "WARN:", "ERROR:"}
 
 func newTraceRecord(traceEmitter *TraceEmitter, traceTypeIdent TraceType, messageText string) (record *qbw1diagrpcgen.TraceRecord) {
 	record = &qbw1diagrpcgen.TraceRecord{
@@ -33,6 +41,37 @@ func newTraceRecord(traceEmitter *TraceEmitter, traceTypeIdent TraceType, messag
 		TraceType:       int32(traceTypeIdent),
 		EmitAt:          time.Now().UnixNano(),
 		MessageText:     messageText,
+	}
+	return
+}
+
+func newLinkedTraceRecordWithBaggagedMessages(traceEmitter *TraceEmitter, linkedMessages []*BaggagedMessage) (record *qbw1diagrpcgen.TraceRecord) {
+	linkedSpans := make([]*qbw1diagrpcgen.SpanIdent, 0, len(linkedMessages))
+	for _, bagMsg := range linkedMessages {
+		linkedSpans = append(linkedSpans, &qbw1diagrpcgen.SpanIdent{
+			TraceIdent: bagMsg.TraceIdent,
+			SpanIdent:  bagMsg.SpanIdent,
+		})
+	}
+	record = &qbw1diagrpcgen.TraceRecord{
+		TraceIdent:      traceEmitter.TraceIdent,
+		SpanIdent:       traceEmitter.SpanIdent,
+		ParentSpanIdent: traceEmitter.ParentSpanIdent,
+		TraceType:       int32(LinkedTrace),
+		EmitAt:          time.Now().UnixNano(),
+		LinkedSpans:     linkedSpans,
+	}
+	return
+}
+
+func newLinkedTraceRecordWithSpanIdents(traceEmitter *TraceEmitter, linkedSpanIdents []*qbw1diagrpcgen.SpanIdent) (record *qbw1diagrpcgen.TraceRecord) {
+	record = &qbw1diagrpcgen.TraceRecord{
+		TraceIdent:      traceEmitter.TraceIdent,
+		SpanIdent:       traceEmitter.SpanIdent,
+		ParentSpanIdent: traceEmitter.ParentSpanIdent,
+		TraceType:       int32(LinkedTrace),
+		EmitAt:          time.Now().UnixNano(),
+		LinkedSpans:     linkedSpanIdents,
 	}
 	return
 }
@@ -105,6 +144,54 @@ func (diag *DiagnosisEmitter) emitTraceRecordLogf(
 	diag.enqueueTraceRecord(traceEmitter, traceTypeIdent, messageText)
 }
 
+func (diag *DiagnosisEmitter) emitTraceRecordErrorf(
+	traceEmitter *TraceEmitter,
+	traceTypeIdent TraceType,
+	messageFmt string,
+	a ...interface{}) {
+	var messageText string
+	if len(a) == 0 {
+		messageText = messageFmt
+	} else {
+		messageText = fmt.Sprintf(messageFmt, a...)
+	}
+	log.Print("ERROR:", messageText)
+	if currentReaderCnt := atomic.LoadInt32(&diag.traceReaderCount); currentReaderCnt <= 0 {
+		return
+	}
+	diag.enqueueTraceRecord(traceEmitter, traceTypeIdent, messageText)
+}
+
+func (diag *DiagnosisEmitter) emitLinkedTraceRecordWithBaggagedMessages(
+	traceEmitter *TraceEmitter, linkedMessages []*BaggagedMessage) {
+	if currentReaderCnt := atomic.LoadInt32(&diag.traceReaderCount); currentReaderCnt <= 0 {
+		return
+	}
+	record := newLinkedTraceRecordWithBaggagedMessages(traceEmitter, linkedMessages)
+	select {
+	case diag.traceRecordQueue <- record:
+		return
+	default:
+		log.Printf("WARN: cannot queue linked (via baggage messages) trace message: full. TraceID=%08X, SpanID=%08X, ParentSpanID=%08X, TraceType=%s, EmitAt=%d, LinkedSpanCount=[%d]",
+			record.TraceIdent, record.SpanIdent, record.ParentSpanIdent, TraceType(record.TraceType).String(), record.EmitAt, len(record.LinkedSpans))
+	}
+}
+
+func (diag *DiagnosisEmitter) emitLinkedTraceRecordWithSpanIdents(
+	traceEmitter *TraceEmitter, linkedSpanIdents []*qbw1diagrpcgen.SpanIdent) {
+	if currentReaderCnt := atomic.LoadInt32(&diag.traceReaderCount); currentReaderCnt <= 0 {
+		return
+	}
+	record := newLinkedTraceRecordWithSpanIdents(traceEmitter, linkedSpanIdents)
+	select {
+	case diag.traceRecordQueue <- record:
+		return
+	default:
+		log.Printf("WARN: cannot queue linked (via span idents) trace message: full. TraceID=%08X, SpanID=%08X, ParentSpanID=%08X, TraceType=%s, EmitAt=%d, LinkedSpanCount=[%d]",
+			record.TraceIdent, record.SpanIdent, record.ParentSpanIdent, TraceType(record.TraceType).String(), record.EmitAt, len(record.LinkedSpans))
+	}
+}
+
 func (diag *DiagnosisEmitter) StartTrace(traceMessageFmt string, a ...interface{}) (traceEmitter *TraceEmitter) {
 	traceIdent := diag.AllocateSerial()
 	traceEmitter = &TraceEmitter{
@@ -117,12 +204,32 @@ func (diag *DiagnosisEmitter) StartTrace(traceMessageFmt string, a ...interface{
 	return
 }
 
+func (diag *DiagnosisEmitter) StartSpanFromRemoteTrace(remoteTraceIdent int32, remoteSpanIdent int32, traceMessageFmt string, a ...interface{}) (traceEmitter *TraceEmitter) {
+	spanIdent := diag.AllocateSerial()
+	traceEmitter = &TraceEmitter{
+		diagnosisEmitter: diag,
+		TraceIdent:       remoteTraceIdent,
+		SpanIdent:        spanIdent,
+		ParentSpanIdent:  remoteSpanIdent,
+	}
+	diag.emitTraceRecordLogf(traceEmitter, TraceSpanStart, traceMessageFmt, a...)
+	return
+}
+
 type TraceEmitter struct {
 	diagnosisEmitter *DiagnosisEmitter
 
 	TraceIdent      int32
 	SpanIdent       int32
 	ParentSpanIdent int32
+}
+
+func (emitter *TraceEmitter) TraceSpanIdent() (traceSpanIdent *qbw1diagrpcgen.SpanIdent) {
+	traceSpanIdent = &qbw1diagrpcgen.SpanIdent{
+		TraceIdent: emitter.TraceIdent,
+		SpanIdent:  emitter.SpanIdent,
+	}
+	return
 }
 
 func (emitter *TraceEmitter) FinishTrace(traceMessageFmt string, a ...interface{}) {
@@ -141,11 +248,58 @@ func (emitter *TraceEmitter) StartSpan(traceMessageFmt string, a ...interface{})
 	return
 }
 
-func (emitter *TraceEmitter) FinishSpan(traceMessageFmt string, a ...interface{}) (traceEmitter *TraceEmitter) {
-	emitter.diagnosisEmitter.emitTraceRecordLogf(traceEmitter, TraceSpanFinish, traceMessageFmt, a...)
-	return
+func (emitter *TraceEmitter) FinishSpan(traceMessageFmt string, a ...interface{}) {
+	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, TraceSpanFinish, traceMessageFmt, a...)
+}
+
+func (emitter *TraceEmitter) FinishSpanErrorf(traceMessageFmt string, a ...interface{}) {
+	emitter.diagnosisEmitter.emitTraceRecordErrorf(emitter, TraceSpanFinish, traceMessageFmt, a...)
+}
+
+func (emitter *TraceEmitter) FinishSpanFailedErr(err error) {
+	messageText := "failed: " + err.Error()
+	emitter.diagnosisEmitter.emitTraceRecordErrorf(emitter, TraceSpanFinish, messageText)
+}
+
+func (emitter *TraceEmitter) FinishSpanCheckErr(err error) {
+	if nil != err {
+		messageText := "failed: " + err.Error()
+		emitter.diagnosisEmitter.emitTraceRecordErrorf(emitter, TraceSpanFinish, messageText)
+		return
+	}
+	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, TraceSpanFinish, "success")
+}
+
+func (emitter *TraceEmitter) FinishSpanCheckBool(isSuccess bool) {
+	var traceMessage string
+	if isSuccess {
+		traceMessage = "success"
+	} else {
+		traceMessage = "failed"
+	}
+	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, TraceSpanFinish, traceMessage)
 }
 
 func (emitter *TraceEmitter) Logf(traceTypeIdent TraceType, traceMessageFmt string, a ...interface{}) {
 	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, traceTypeIdent, traceMessageFmt, a...)
+}
+
+func (emitter *TraceEmitter) EventInfof(traceMessageFmt string, a ...interface{}) {
+	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, EventInfo, traceMessageFmt, a...)
+}
+
+func (emitter *TraceEmitter) EventWarningf(traceMessageFmt string, a ...interface{}) {
+	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, EventWarning, traceMessageFmt, a...)
+}
+
+func (emitter *TraceEmitter) EventErrorf(traceMessageFmt string, a ...interface{}) {
+	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, EventError, traceMessageFmt, a...)
+}
+
+func (emitter *TraceEmitter) LinkBaggagedMessages(linkedMessages []*BaggagedMessage) {
+	emitter.diagnosisEmitter.emitLinkedTraceRecordWithBaggagedMessages(emitter, linkedMessages)
+}
+
+func (emitter *TraceEmitter) LinkSpanIdents(linkedSpanIdents []*qbw1diagrpcgen.SpanIdent) {
+	emitter.diagnosisEmitter.emitLinkedTraceRecordWithSpanIdents(emitter, linkedSpanIdents)
 }

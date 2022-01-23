@@ -216,3 +216,81 @@ func (m *EnvelopedMessage) Digest(d *md5digest.MD5Digest) {
 	}
 	d.SumBytes(m.MessageContent[2:])
 }
+
+type BaggagedMessage struct {
+	EnvelopedMessage
+
+	TraceIdent int32
+	SpanIdent  int32
+}
+
+func NewBaggagedMessage(spanEmitter *TraceEmitter, rawMsg *EnvelopedMessage) (m *BaggagedMessage) {
+	m = &BaggagedMessage{
+		EnvelopedMessage: *rawMsg,
+		TraceIdent:       spanEmitter.TraceIdent,
+		SpanIdent:        spanEmitter.SpanIdent,
+	}
+	return
+}
+
+// UnpackBaggagedMessage fetch RawMessage from given buffer and return remain buffer.
+func UnpackBaggagedMessage(b []byte) (m *BaggagedMessage, remainBytes []byte, err error) {
+	if len(b) < (4 + 4 + 4 + 6) {
+		return
+	}
+	contentSize := int(binary.LittleEndian.Uint32(b))
+	if (contentSize > hardPayloadSizeLimit) || (contentSize < 0) {
+		err = fmt.Errorf("unexpect raw message package size: %d", contentSize)
+		return
+	}
+	if len(b) < ((4 + 4 + 4 + 6) + contentSize) {
+		err = fmt.Errorf("insufficient buffer for raw message: content-size=%d, buffer-size=%d", contentSize, len(b))
+		return
+	}
+	traceIdent := int32(binary.LittleEndian.Uint32(b[4:]))
+	spanIdent := int32(binary.LittleEndian.Uint32(b[8:]))
+	srcServiceIdent := int(binary.LittleEndian.Uint16(b[12:]))
+	dstServiceIdent := int(binary.LittleEndian.Uint16(b[14:]))
+	remainHops := int(binary.LittleEndian.Uint16(b[16:]))
+	msgContent := b[18 : 18+contentSize]
+	if len(b) > 18+contentSize+4+6 {
+		remainBytes = b[18+contentSize:]
+	}
+	m = &BaggagedMessage{
+		EnvelopedMessage: EnvelopedMessage{
+			SourceServiceIdent:      srcServiceIdent,
+			DestinationServiceIdent: dstServiceIdent,
+			RemainHops:              remainHops,
+			MessageContent:          msgContent,
+		},
+		TraceIdent: traceIdent,
+		SpanIdent:  spanIdent,
+	}
+	return
+}
+
+// UnpackEnvelopedMessage fetch RawMessage from given buffer and return remain buffer.
+func UnpackBaggagedEnvelopedMessage(b []byte, diagnosisEmitter *DiagnosisEmitter, traceMessageFmt string, a ...interface{}) (spanEmitter *TraceEmitter, m *EnvelopedMessage, remainBytes []byte, err error) {
+	baggedMsg, remainBytes, err := UnpackBaggagedMessage(b)
+	m = &baggedMsg.EnvelopedMessage
+	spanEmitter = diagnosisEmitter.StartSpanFromRemoteTrace(baggedMsg.TraceIdent, baggedMsg.SpanIdent, traceMessageFmt, a...)
+	return
+}
+
+// Pack append binary form of RawMessage into given b.
+func (m *BaggagedMessage) Pack(b []byte) (result []byte) {
+	buf := make([]byte, 4+4+4+6)
+	binary.LittleEndian.PutUint32(buf, uint32(len(m.MessageContent)))
+	binary.LittleEndian.PutUint32(buf[4:], uint32(m.TraceIdent))
+	binary.LittleEndian.PutUint32(buf[8:], uint32(m.SpanIdent))
+	binary.LittleEndian.PutUint16(buf[12:], uint16(m.SourceServiceIdent))
+	binary.LittleEndian.PutUint16(buf[14:], uint16(m.DestinationServiceIdent))
+	binary.LittleEndian.PutUint16(buf[16:], uint16(m.RemainHops))
+	result = append(append(b, buf...), m.MessageContent...)
+	return
+}
+
+// PackedLen return bytes resulted by Pack().
+func (m *BaggagedMessage) PackedLen() int {
+	return 4 + 4 + m.EnvelopedMessage.PackedLen()
+}

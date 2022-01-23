@@ -17,7 +17,7 @@ func (s *ServiceBase) Setup(diag *DiagnosisEmitter, certProvider CertificateProv
 
 // Start service instance for operation.
 // Should only invoke at maintenance thread in setup stage.
-func (s *ServiceBase) Start(ctx context.Context, waitGroup *sync.WaitGroup) (err error) {
+func (s *ServiceBase) Start(ctx context.Context, waitGroup *sync.WaitGroup, spanEmitter *TraceEmitter) (err error) {
 	return
 }
 
@@ -26,7 +26,7 @@ func (s *ServiceBase) Stop() {}
 
 // ReceiveMessage deliver message into this instance of service provider.
 // The message should decypted before pass into this method.
-func (s *ServiceBase) ReceiveMessage(rawMessage *EnvelopedMessage) (err error) {
+func (s *ServiceBase) ReceiveMessage(spanEmitter *TraceEmitter, rawMessage *EnvelopedMessage) (err error) {
 	return
 }
 

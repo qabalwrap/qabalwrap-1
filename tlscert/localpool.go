@@ -153,17 +153,21 @@ func (lc *localCerts) HaveRootCertificate() (rootCertExisted bool) {
 }
 
 // updateRootCert set root certificate to given one.
-func (lc *localCerts) updateRootCert(externalRootCert *CertificateKeyPair) (changed bool, err error) {
+func (lc *localCerts) updateRootCert(spanEmitter *qabalwrap.TraceEmitter, externalRootCert *CertificateKeyPair) (changed bool, err error) {
 	if lc.RootCertKeyPair != nil {
 		if lc.RootCertKeyPair.Certificate.Equal(externalRootCert.Certificate) {
+			spanEmitter.EventInfof("(updateRootCert) equal root certificate")
 			return
 		}
 		if externalRootCert.Certificate.NotAfter.Before(lc.RootCertKeyPair.Certificate.NotAfter) {
+			spanEmitter.EventWarningf("(updateRootCert) given root cert expire eariler: given: %v, existed: %v",
+				externalRootCert.Certificate.NotAfter, lc.RootCertKeyPair.Certificate.NotAfter)
 			return
 		}
 	}
 	lc.RootCertKeyPair = externalRootCert
 	lc.lastModifyTimestamp = time.Now().Unix()
+	spanEmitter.EventInfof("(updateRootCert) update success")
 	return true, nil
 }
 

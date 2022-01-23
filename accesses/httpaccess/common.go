@@ -14,19 +14,22 @@ import (
 	"golang.org/x/crypto/nacl/secretbox"
 
 	qabalwrap "github.com/qabalwrap/qabalwrap-1"
+	"github.com/qabalwrap/qabalwrap-1/gen/qbw1diagrpcgen"
 )
 
 type baseRelayProvider struct {
 	sharedSecret      [32]byte
-	messageBuffer     chan *qabalwrap.EnvelopedMessage
+	messageBuffer     chan *qabalwrap.BaggagedMessage
 	messageDispatcher qabalwrap.MessageDispatcher
+
+	diagnosisEmitter *qabalwrap.DiagnosisEmitter
 }
 
-func (p *baseRelayProvider) SetMessageDispatcher(dispatcher qabalwrap.MessageDispatcher) {
+func (p *baseRelayProvider) SetMessageDispatcher(spanEmitter *qabalwrap.TraceEmitter, dispatcher qabalwrap.MessageDispatcher) {
 	p.messageDispatcher = dispatcher
 }
 
-func (p *baseRelayProvider) collectMessagesAsMuchAsPossible(ctx context.Context) (resultQueue []*qabalwrap.EnvelopedMessage, resultSize int) {
+func (p *baseRelayProvider) collectMessagesAsMuchAsPossible(ctx context.Context) (resultQueue []*qabalwrap.BaggagedMessage, resultSize int) {
 	timer := time.NewTimer(nonEmptyMessageCollectTimeout)
 	for resultSize < softPayloadSizeLimit {
 		select {
@@ -45,7 +48,7 @@ func (p *baseRelayProvider) collectMessagesAsMuchAsPossible(ctx context.Context)
 	return
 }
 
-func (p *baseRelayProvider) collectMessages(ctx context.Context, collectTimeout time.Duration) (resultQueue []*qabalwrap.EnvelopedMessage, resultSize int) {
+func (p *baseRelayProvider) collectMessages(ctx context.Context, collectTimeout time.Duration) (resultQueue []*qabalwrap.BaggagedMessage, resultSize int) {
 	startTimestamp := time.Now()
 	if resultQueue, resultSize = p.collectMessagesAsMuchAsPossible(ctx); resultSize > 0 {
 		return
@@ -65,9 +68,14 @@ func (p *baseRelayProvider) collectMessages(ctx context.Context, collectTimeout 
 }
 
 // packMessages collect and encode waiting raw messages in given collect timeout.
-func (p *baseRelayProvider) packMessages(ctx context.Context, collectTimeout time.Duration) (resultBinaries []byte, messageCount int, err error) {
+func (p *baseRelayProvider) packMessages(
+	ctx context.Context,
+	spanEmitter *qabalwrap.TraceEmitter,
+	collectTimeout time.Duration) (resultBinaries []byte, messageCount int, err error) {
+	spanEmitter = spanEmitter.StartSpan("relay-base-pack-messages")
 	resultQueue, resultSize := p.collectMessages(ctx, collectTimeout)
 	if ctx.Err() != nil {
+		spanEmitter.FinishSpan("failed: context error")
 		return
 	}
 	var buf []byte
@@ -79,11 +87,12 @@ func (p *baseRelayProvider) packMessages(ctx context.Context, collectTimeout tim
 			buf = rawMsg.Pack(buf)
 		}
 		messageCount = len(resultQueue)
+		spanEmitter.LinkBaggagedMessages(resultQueue)
 	}
 	result := make([]byte, sha256.Size+4+24, sha256.Size+4+24+len(buf)+secretbox.Overhead)
 	var nonce [24]byte
 	if _, err = io.ReadFull(rand.Reader, nonce[:]); nil != err {
-		log.Printf("ERROR: (commonRelayProviderBase::packMessages) cannot init nonce: %v", err)
+		spanEmitter.FinishSpanErrorf("failed: (commonRelayProviderBase::packMessages) cannot init nonce: %v", err)
 		return
 	}
 	copy(result[sha256.Size+4:], nonce[:])
@@ -97,19 +106,21 @@ func (p *baseRelayProvider) packMessages(ctx context.Context, collectTimeout tim
 	sizeRaw := uint32(sizeReal) ^ mask1 ^ mask2
 	binary.LittleEndian.PutUint32(result[sha256.Size:], uint32(sizeRaw))
 	resultBinaries = result
+	spanEmitter.FinishSpan("success: packed %d message into %d bytes", messageCount, len(resultBinaries))
 	return
 }
 
-func (p *baseRelayProvider) unpackMessages(b io.Reader) (payload []byte, err error) {
+func (p *baseRelayProvider) unpackMessages(spanEmitter *qabalwrap.TraceEmitter, b io.Reader) (payload []byte, err error) {
+	spanEmitter = spanEmitter.StartSpan("relay-base-unpack-messages")
 	var chksum [sha256.Size]byte
 	var sizeBuf [4]byte
 	var n int
 	if n, err = io.ReadFull(b, chksum[:]); nil != err {
-		log.Printf("ERROR: (commonRelayProviderBase::unpackMessages) not enough bytes for digest: %d, %v", n, err)
+		spanEmitter.FinishSpanErrorf("failed: (commonRelayProviderBase::unpackMessages) not enough bytes for digest: %d, %v", n, err)
 		return
 	}
 	if n, err = io.ReadFull(b, sizeBuf[:]); nil != err {
-		log.Printf("ERROR: (commonRelayProviderBase::unpackMessages) not enough bytes for size: %d, %v", n, err)
+		spanEmitter.FinishSpanErrorf("failed: (commonRelayProviderBase::unpackMessages) not enough bytes for size: %d, %v", n, err)
 		return
 	}
 	sizeRaw := binary.LittleEndian.Uint32(sizeBuf[:])
@@ -118,45 +129,59 @@ func (p *baseRelayProvider) unpackMessages(b io.Reader) (payload []byte, err err
 	sizeReal := int(sizeRaw ^ mask1 ^ mask2)
 	if (sizeReal > hardPayloadSizeLimit) || (sizeReal < 24) {
 		err = fmt.Errorf("exceed hard HTTP binary payload limit: %d", sizeReal)
+		spanEmitter.FinishSpanFailedErr(err)
 		return
 	}
 	totalBuf := make([]byte, 4+sizeReal)
 	binary.LittleEndian.PutUint32(totalBuf[0:], uint32(sizeReal))
 	if n, err = io.ReadFull(b, totalBuf[4:]); nil != err {
-		log.Printf("ERROR: (commonRelayProviderBase::unpackMessages) not enough bytes for payload: %d, expect=%d, %v", n, sizeReal, err)
+		spanEmitter.FinishSpanErrorf("failed: (commonRelayProviderBase::unpackMessages) not enough bytes for payload: %d, expect=%d, %v", n, sizeReal, err)
 		return
 	}
 	versum := sha256.Sum256(totalBuf)
 	if chksum != versum {
 		err = fmt.Errorf("invalid package checksum: %s vs. %s", base64.RawURLEncoding.EncodeToString(chksum[:]), base64.RawURLEncoding.EncodeToString(versum[:]))
+		spanEmitter.FinishSpanFailedErr(err)
+		return
 	}
 	var nonce [24]byte
 	copy(nonce[:], totalBuf[4:])
 	payloadBytes, ok := secretbox.Open(nil, totalBuf[4+24:], &nonce, &p.sharedSecret)
 	if !ok {
 		err = ErrPayloadDecrypt
+		spanEmitter.FinishSpanFailedErr(err)
 		return
 	}
 	payload = payloadBytes
+	spanEmitter.FinishSpan("success")
 	return
 }
 
-func (p *baseRelayProvider) dispatchMessages(b io.Reader) (dispatchedMessageCount int, err error) {
-	payload, err := p.unpackMessages(b)
+func (p *baseRelayProvider) dispatchMessages(spanEmitter *qabalwrap.TraceEmitter, b io.Reader) (dispatchedMessageCount int, err error) {
+	spanEmitter = spanEmitter.StartSpan("relay-base-dispatch-messages")
+	payload, err := p.unpackMessages(spanEmitter, b)
 	if nil != err {
+		spanEmitter.FinishSpanFailedErr(err)
 		return
 	}
+	linkedRemoteTraceIdents := make([]*qbw1diagrpcgen.SpanIdent, 0, 8)
 	for len(payload) > 0 {
+		var remoteSpanEmitter *qabalwrap.TraceEmitter
 		var msg *qabalwrap.EnvelopedMessage
-		if msg, payload, err = qabalwrap.UnpackEnvelopedMessage(payload); nil != err {
-			log.Printf("ERROR: (commonRelayProviderBase::dispatchMessages) unpack into raw message failed: %v", err)
+		if remoteSpanEmitter, msg, payload, err = qabalwrap.UnpackBaggagedEnvelopedMessage(payload, p.diagnosisEmitter, "relay-base-dispatch-message"); nil != err {
+			spanEmitter.FinishSpanErrorf("failed: (commonRelayProviderBase::dispatchMessages) unpack into raw message failed: %v", err)
 			return
 		}
 		if msg != nil {
-			p.messageDispatcher.DispatchMessage(msg)
+			p.messageDispatcher.DispatchMessage(remoteSpanEmitter, msg)
 			dispatchedMessageCount++
+			linkedRemoteTraceIdents = append(linkedRemoteTraceIdents, remoteSpanEmitter.TraceSpanIdent())
 		}
 	}
+	if len(linkedRemoteTraceIdents) > 0 {
+		spanEmitter.LinkSpanIdents(linkedRemoteTraceIdents)
+	}
+	spanEmitter.FinishSpan("success")
 	return
 }
 
@@ -179,13 +204,13 @@ func (p *baseRelayProvider) initBaseRelayProvider(sharedSecretText string, messa
 		}
 		copy(p.sharedSecret[:], buf)
 	}
-	p.messageBuffer = make(chan *qabalwrap.EnvelopedMessage, messageBufferCount)
+	p.messageBuffer = make(chan *qabalwrap.BaggagedMessage, messageBufferCount)
 	return
 }
 
-func (p *baseRelayProvider) blockingEmitMessage(ctx context.Context, rawMessage *qabalwrap.EnvelopedMessage) (err error) {
+func (p *baseRelayProvider) blockingEmitMessage(ctx context.Context, spanEmitter *qabalwrap.TraceEmitter, rawMessage *qabalwrap.EnvelopedMessage) (err error) {
 	select {
-	case p.messageBuffer <- rawMessage:
+	case p.messageBuffer <- qabalwrap.NewBaggagedMessage(spanEmitter, rawMessage):
 		return
 	default:
 	}
@@ -195,7 +220,7 @@ func (p *baseRelayProvider) blockingEmitMessage(ctx context.Context, rawMessage 
 		err = ctx.Err()
 	case <-timer.C:
 		err = ErrEmitMessageTimeout
-	case p.messageBuffer <- rawMessage:
+	case p.messageBuffer <- qabalwrap.NewBaggagedMessage(spanEmitter, rawMessage):
 	}
 	if !timer.Stop() {
 		<-timer.C
@@ -203,9 +228,9 @@ func (p *baseRelayProvider) blockingEmitMessage(ctx context.Context, rawMessage 
 	return
 }
 
-func (p *baseRelayProvider) nonblockingEmitMessage(ctx context.Context, rawMessage *qabalwrap.EnvelopedMessage) (emitSuccess bool) {
+func (p *baseRelayProvider) nonblockingEmitMessage(ctx context.Context, spanEmitter *qabalwrap.TraceEmitter, rawMessage *qabalwrap.EnvelopedMessage) (emitSuccess bool) {
 	select {
-	case p.messageBuffer <- rawMessage:
+	case p.messageBuffer <- qabalwrap.NewBaggagedMessage(spanEmitter, rawMessage):
 		return true
 	default:
 	}

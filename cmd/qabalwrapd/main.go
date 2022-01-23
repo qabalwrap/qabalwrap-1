@@ -20,7 +20,7 @@ func main() {
 	signal.Notify(stopChannel, os.Interrupt, unix.SIGTERM)
 	var waitGroup sync.WaitGroup
 	log.Print("INFO: activating qabalwarp-1 service.")
-	if err = msgSwitch.Start(ctx, &waitGroup); nil != err {
+	if err = msgSwitch.Start(ctx, &waitGroup, nil); nil != err {
 		cancel()
 		msgSwitch.Stop()
 		log.Fatalf("ERROR: cannot start message switch: %v", err)

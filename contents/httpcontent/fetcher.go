@@ -45,17 +45,20 @@ func NewHTTPContentFetcher(targetBaseURL *url.URL, httpHostOverride string, maxC
 	return
 }
 
-func (hnd *HTTPContentFetcher) allocateFetchSlot(ctx context.Context, srcSerialIdent int, requestIdent int32) (fetchSlot *httpContentFetchSlot) {
+func (hnd *HTTPContentFetcher) allocateFetchSlot(ctx context.Context, spanEmitter *qabalwrap.TraceEmitter, srcSerialIdent int, requestIdent int32) (fetchSlot *httpContentFetchSlot) {
+	spanEmitter = spanEmitter.StartSpan("http-content-fetch-alloc-slot: src=%d, req=%d", srcSerialIdent, requestIdent)
 	hnd.lckFetchSlots.Lock()
 	defer hnd.lckFetchSlots.Unlock()
 	l := len(hnd.freeFetchSlotIndexes)
 	if l == 0 {
+		spanEmitter.FinishSpan("failed: out of free slot")
 		return
 	}
 	targetIndex := hnd.freeFetchSlotIndexes[l-1]
 	hnd.freeFetchSlotIndexes = hnd.freeFetchSlotIndexes[:(l - 1)]
 	fetchSlot = newHTTPContentFetchSlot(ctx, hnd, targetIndex, hnd.messageSender, srcSerialIdent, requestIdent)
 	hnd.fetchSlots[targetIndex] = fetchSlot
+	spanEmitter.FinishSpan("success: slot-index=%d", targetIndex)
 	return
 }
 
@@ -72,19 +75,21 @@ func (hnd *HTTPContentFetcher) releaseFetchSlot(fetchSlot *httpContentFetchSlot)
 	hnd.freeFetchSlotIndexes = append(hnd.freeFetchSlotIndexes, targetIndex)
 }
 
-func (hnd *HTTPContentFetcher) getFetchSlot(fetchSlotIdent int32) (fetchSlot *httpContentFetchSlot) {
+func (hnd *HTTPContentFetcher) getFetchSlot(spanEmitter *qabalwrap.TraceEmitter, fetchSlotIdent int32) (fetchSlot *httpContentFetchSlot) {
+	spanEmitter = spanEmitter.StartSpan("get-transfer-slot: slot-ident=%d", fetchSlotIdent)
 	hnd.lckFetchSlots.Lock()
 	defer hnd.lckFetchSlots.Unlock()
 	idx := int(fetchSlotIdent & 0x0000FFFF)
 	if (idx < 0) || (idx >= len(hnd.fetchSlots)) {
-		log.Printf("WARN: (HTTPContentFetcher::getFetchSlot) index out of range: %d, %d", fetchSlotIdent, idx)
+		spanEmitter.FinishSpanErrorf("failed: (HTTPContentFetcher::getFetchSlot) index out of range: %d, %d", fetchSlotIdent, idx)
 		return
 	}
 	if (hnd.fetchSlots[idx] == nil) || (hnd.fetchSlots[idx].slotIdent != fetchSlotIdent) {
-		log.Printf("WARN: (HTTPContentFetcher::getFetchSlot) identifier not match: %d, %d", fetchSlotIdent, idx)
+		spanEmitter.FinishSpanErrorf("failed: (HTTPContentFetcher::getFetchSlot) identifier not match: %d, %d", fetchSlotIdent, idx)
 		return
 	}
 	fetchSlot = hnd.fetchSlots[idx]
+	spanEmitter.FinishSpan("success")
 	return
 }
 
@@ -93,11 +98,12 @@ func (hnd *HTTPContentFetcher) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	// TODO: impl
 }
 
-func (hnd *HTTPContentFetcher) processContentRequest(srcSerialIdent int, m *qbw1grpcgen.HTTPContentRequest) {
+func (hnd *HTTPContentFetcher) processContentRequest(spanEmitter *qabalwrap.TraceEmitter, srcSerialIdent int, m *qbw1grpcgen.HTTPContentRequest) {
+	spanEmitter = spanEmitter.StartSpan("http-content-fetch-process-req: %d", m.ResponseIdent)
 	if m.ResponseIdent != 0 {
-		if fetchSlot := hnd.getFetchSlot(m.ResponseIdent); fetchSlot != nil {
+		if fetchSlot := hnd.getFetchSlot(spanEmitter, m.ResponseIdent); fetchSlot != nil {
 			fetchSlot.reqCh <- m
-			return
+			spanEmitter.FinishSpan("success: existed slot")
 		} else {
 			resp := qbw1grpcgen.HTTPContentResponse{
 				RequestIdent:    m.RequestIdent,
@@ -105,11 +111,12 @@ func (hnd *HTTPContentFetcher) processContentRequest(srcSerialIdent int, m *qbw1
 				ContentBody:     []byte("fetch slot released"),
 				IsComplete:      true,
 			}
-			hnd.messageSender.Send(srcSerialIdent, qabalwrap.MessageContentHTTPContentResponse, &resp)
+			hnd.messageSender.Send(spanEmitter, srcSerialIdent, qabalwrap.MessageContentHTTPContentResponse, &resp)
+			spanEmitter.FinishSpan("failed: slot released")
 		}
 		return
 	}
-	fetchSlot := hnd.allocateFetchSlot(hnd.ctx, srcSerialIdent, m.RequestIdent)
+	fetchSlot := hnd.allocateFetchSlot(hnd.ctx, spanEmitter, srcSerialIdent, m.RequestIdent)
 	if fetchSlot == nil {
 		resp := qbw1grpcgen.HTTPContentResponse{
 			RequestIdent:    m.RequestIdent,
@@ -117,43 +124,50 @@ func (hnd *HTTPContentFetcher) processContentRequest(srcSerialIdent int, m *qbw1
 			ContentBody:     []byte("fetch slot unavailable"),
 			IsComplete:      true,
 		}
-		hnd.messageSender.Send(srcSerialIdent, qabalwrap.MessageContentHTTPContentResponse, &resp)
+		hnd.messageSender.Send(spanEmitter, srcSerialIdent, qabalwrap.MessageContentHTTPContentResponse, &resp)
+		spanEmitter.FinishSpan("failed: slot unavailable")
 		return
 	}
-	go fetchSlot.run(m)
+	go fetchSlot.run(spanEmitter, m)
+	spanEmitter.FinishSpan("success: new slot")
 }
 
-func (hnd *HTTPContentFetcher) processLinkClosed(m *qbw1grpcgen.HTTPContentLinkClosed) {
+func (hnd *HTTPContentFetcher) processLinkClosed(spanEmitter *qabalwrap.TraceEmitter, m *qbw1grpcgen.HTTPContentLinkClosed) {
+	spanEmitter = spanEmitter.StartSpan("http-content-fetch-link-closed: resp=%d", m.ResponseIdent)
 	if m.ResponseIdent == 0 {
+		spanEmitter.FinishSpan("failed: empty response identifier")
 		return
 	}
-	if fetchSlot := hnd.getFetchSlot(m.ResponseIdent); fetchSlot != nil {
+	if fetchSlot := hnd.getFetchSlot(spanEmitter, m.ResponseIdent); fetchSlot != nil {
 		fetchSlot.cancel()
-		log.Printf("TRACE: cancelled closed link: response-ident=%d.", m.ResponseIdent)
+		spanEmitter.FinishSpan("success: cancelled closed link: response-ident=%d.", m.ResponseIdent)
 	} else {
-		log.Printf("TRACE: closed link not existed anymore: response-ident=%d.", m.ResponseIdent)
+		spanEmitter.FinishSpan("failed: closed link not existed anymore: response-ident=%d.", m.ResponseIdent)
 	}
 }
 
 // ReceiveMessage implement ServiceProvider interface.
-func (hnd *HTTPContentFetcher) ReceiveMessage(envelopedMessage *qabalwrap.EnvelopedMessage) (err error) {
+func (hnd *HTTPContentFetcher) ReceiveMessage(spanEmitter *qabalwrap.TraceEmitter, envelopedMessage *qabalwrap.EnvelopedMessage) (err error) {
+	spanEmitter = spanEmitter.StartSpan("http-content-fetch-recv-msg")
 	switch envelopedMessage.MessageContentType() {
 	case qabalwrap.MessageContentHTTPContentRequest:
 		var req qbw1grpcgen.HTTPContentRequest
 		if err = envelopedMessage.Unmarshal(&req); nil != err {
-			log.Printf("ERROR: (HTTPContentFetcher::ReceiveMessage::ContentRequest) unmarshal request failed: %v", err)
+			spanEmitter.FinishSpanErrorf("failed: (HTTPContentFetcher::ReceiveMessage::ContentRequest) unmarshal request failed: %v", err)
 			return
 		}
-		hnd.processContentRequest(envelopedMessage.SourceServiceIdent, &req)
+		hnd.processContentRequest(spanEmitter, envelopedMessage.SourceServiceIdent, &req)
+		spanEmitter.FinishSpan("success: content request")
 	case qabalwrap.MessageContentHTTPContentLinkClosed:
 		var req qbw1grpcgen.HTTPContentLinkClosed
 		if err = envelopedMessage.Unmarshal(&req); nil != err {
-			log.Printf("ERROR: (HTTPContentFetcher::ReceiveMessage::LinkClosed) unmarshal request failed: %v", err)
+			spanEmitter.FinishSpanErrorf("failed: (HTTPContentFetcher::ReceiveMessage::LinkClosed) unmarshal request failed: %v", err)
 			return
 		}
-		hnd.processLinkClosed(&req)
+		hnd.processLinkClosed(spanEmitter, &req)
+		spanEmitter.FinishSpan("success: link close")
 	default:
-		log.Printf("WARN: (HTTPContentFetcher::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", envelopedMessage.SourceServiceIdent, envelopedMessage.DestinationServiceIdent, envelopedMessage.MessageContentType())
+		spanEmitter.FinishSpanErrorf("failed: (HTTPContentFetcher::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", envelopedMessage.SourceServiceIdent, envelopedMessage.DestinationServiceIdent, envelopedMessage.MessageContentType())
 	}
 	return
 }

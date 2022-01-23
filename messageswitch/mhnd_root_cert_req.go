@@ -1,20 +1,29 @@
 package messageswitch
 
 import (
-	"log"
 	"time"
 
 	qabalwrap "github.com/qabalwrap/qabalwrap-1"
 	qbw1grpcgen "github.com/qabalwrap/qabalwrap-1/gen/qbw1grpcgen"
 )
 
-func queueRootCertificateRequest(s *MessageSwitch, m *qabalwrap.EnvelopedMessage) {
-	s.rootCertificateRequests <- m.SourceServiceIdent
+func queueRootCertificateRequest(
+	spanEmitter *qabalwrap.TraceEmitter,
+	s *MessageSwitch,
+	m *qabalwrap.EnvelopedMessage) {
+	spanEmitter.StartSpan("queue-root-cert-req: %d", m.SourceServiceIdent)
+	defer spanEmitter.FinishSpan("success")
+	s.rootCertificateRequests <- &rootCertRequest{
+		spanEmitter:        spanEmitter,
+		sourceServiceIdent: m.SourceServiceIdent,
+	}
 }
 
-func handleRootCertificateRequest(s *MessageSwitch, requestSourceIdent int) (err error) {
+func handleRootCertificateRequest(s *MessageSwitch, rootCertReq *rootCertRequest) (err error) {
+	requestSourceIdent := rootCertReq.sourceServiceIdent
+	spanEmitter := rootCertReq.spanEmitter.StartSpan("handle-root-cert-req: %d", requestSourceIdent)
 	if s.tlsCertProvider.RootCertKeyPair == nil {
-		log.Print("WARN: (handleRootCertificateRequest) root certificate is empty")
+		spanEmitter.FinishSpan("success: WARN (handleRootCertificateRequest) root certificate is empty")
 		return
 	}
 	respMsg := &qbw1grpcgen.RootCertificateAssignment{
@@ -24,13 +33,13 @@ func handleRootCertificateRequest(s *MessageSwitch, requestSourceIdent int) (err
 	m, err := qabalwrap.MarshalIntoClearEnvelopedMessage(s.localServiceRef.SerialIdent, requestSourceIdent,
 		qabalwrap.MessageContentRootCertificateAssignment, respMsg)
 	if nil != err {
-		log.Printf("WARN: (handleRootCertificateRequest) cannot marshal root certificate request: %v", err)
+		spanEmitter.FinishSpan("success: WARN: (handleRootCertificateRequest) cannot marshal root certificate request: %v", err)
 		return
 	}
-	if err = s.forwardClearEnvelopedMessage(m); nil != err {
-		log.Printf("ERROR: (handleRootCertificateRequest) cannot emit enveloped message: %v", err)
+	if err = s.forwardClearEnvelopedMessage(spanEmitter, m); nil != err {
+		spanEmitter.FinishSpanErrorf("failed: (handleRootCertificateRequest) cannot emit enveloped message: %v", err)
 	} else {
-		log.Printf("INFO: (handleRootCertificateRequest) responed: destination=%d", requestSourceIdent)
+		spanEmitter.FinishSpan("success: (handleRootCertificateRequest) responed: destination=%d", requestSourceIdent)
 	}
 	return
 }

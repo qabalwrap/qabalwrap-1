@@ -56,13 +56,13 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // ReceiveMessage implement ServiceProvider interface.
-func (s *Service) ReceiveMessage(envelopedMessage *qabalwrap.EnvelopedMessage) (err error) {
+func (s *Service) ReceiveMessage(spanEmitter *qabalwrap.TraceEmitter, envelopedMessage *qabalwrap.EnvelopedMessage) (err error) {
 	log.Printf("WARN: (HTTPServerService::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", envelopedMessage.SourceServiceIdent, envelopedMessage.DestinationServiceIdent, envelopedMessage.MessageContentType())
 	return
 }
 
 // UpdateHostTLSCertificates trigger host TLS update of service.
-func (s *Service) UpdateHostTLSCertificates(waitGroup *sync.WaitGroup, tlsCerts []tls.Certificate) (err error) {
+func (s *Service) UpdateHostTLSCertificates(waitGroup *sync.WaitGroup, spanEmitter *qabalwrap.TraceEmitter, tlsCerts []tls.Certificate) (err error) {
 	s.tlsCerts = tlsCerts
 	if s.serverRunning {
 		s.Stop()
@@ -82,11 +82,13 @@ func (s *Service) httpServerListenAndServeTLS(waitGroup *sync.WaitGroup) {
 }
 
 func (s *Service) Setup(diagnosisEmitter *qabalwrap.DiagnosisEmitter, certProvider qabalwrap.CertificateProvider) (err error) {
+	spanEmitter := diagnosisEmitter.StartTrace("servers-http-start-setup")
+	defer spanEmitter.FinishSpan("success")
 	hostNames := make([]string, 0, len(s.hostHandlers))
 	for hostName := range s.hostHandlers {
 		hostNames = append(hostNames, hostName)
 	}
-	_, err = certProvider.RegisterHostTLSCertificates(hostNames, s)
+	_, err = certProvider.RegisterHostTLSCertificates(spanEmitter, hostNames, s)
 	s.diagnosisEmitter = diagnosisEmitter
 	return
 }
@@ -109,7 +111,7 @@ func (s *Service) startImpl(waitGroup *sync.WaitGroup) (err error) {
 	return
 }
 
-func (s *Service) Start(ctx context.Context, waitGroup *sync.WaitGroup) (err error) {
+func (s *Service) Start(ctx context.Context, waitGroup *sync.WaitGroup, spanEmitter *qabalwrap.TraceEmitter) (err error) {
 	return s.startImpl(waitGroup)
 }
 

@@ -74,7 +74,7 @@ func (d *DiagnosisSocketServer) serveImpl(listener net.Listener, waitGroup *sync
 
 // Start service instance for operation.
 // Should only invoke at maintenance thread in setup stage.
-func (d *DiagnosisSocketServer) Start(ctx context.Context, waitGroup *sync.WaitGroup) (err error) {
+func (d *DiagnosisSocketServer) Start(ctx context.Context, waitGroup *sync.WaitGroup, spanEmitter *qabalwrap.TraceEmitter) (err error) {
 	grpcServer := grpc.NewServer()
 	gen.RegisterQabalwrap1DiagnosisGRPCServer(grpcServer, d)
 	var listener net.Listener
@@ -103,7 +103,7 @@ func (d *DiagnosisSocketServer) Stop() {
 
 // ReceiveMessage deliver message into this instance of service provider.
 // The message should decypted before pass into this method.
-func (d *DiagnosisSocketServer) ReceiveMessage(rawMessage *qabalwrap.EnvelopedMessage) (err error) {
+func (d *DiagnosisSocketServer) ReceiveMessage(spanEmitter *qabalwrap.TraceEmitter, rawMessage *qabalwrap.EnvelopedMessage) (err error) {
 	// TODO: impl
 	return
 }

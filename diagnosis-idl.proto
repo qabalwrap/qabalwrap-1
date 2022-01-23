@@ -23,6 +23,11 @@ message ReadTraceRequest {
 	string client_instance_ident = 1;
 }
 
+message SpanIdent {
+	int32 trace_ident = 1;
+	int32 span_ident = 2;
+}
+
 message TraceRecord {
 	int32 trace_ident = 1;
 	int32 span_ident = 2;
@@ -30,6 +35,7 @@ message TraceRecord {
 	int32 trace_type = 4;
 	int64 emit_at = 5;
 	string message_text = 6;
+	repeated SpanIdent linked_spans = 7;
 }
 
 // }}} REV-CONTENT 5e21bf02abab228cb9effad19f8e758b

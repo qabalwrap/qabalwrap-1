@@ -29,52 +29,57 @@ func newHTTPServeAccessChannel(ctx context.Context, sharedSecretText string, mes
 	return
 }
 
-func (p *serverAccessChannel) serveBinary(w http.ResponseWriter, r *http.Request) {
+func (p *serverAccessChannel) serveBinary(spanEmitter *qabalwrap.TraceEmitter, w http.ResponseWriter, r *http.Request) {
+	spanEmitter = spanEmitter.StartSpan("server-access-ch-bin")
 	if r.Method != http.MethodPost {
-		log.Printf("ERROR: (HTTPServeAccessProvider::serveBinary) wrong http method (remote=%s): %v", r.RemoteAddr, r.Method)
+		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider::serveBinary) wrong http method (remote=%s): %v", r.RemoteAddr, r.Method)
 		httpBadRequest(w, r)
 		return
 	}
 	collectTimeout := slowEmptyMessageCollectTimeout
-	if dispatchedMessageCount, err := p.dispatchMessages(r.Body); nil != err {
-		log.Printf("ERROR: (HTTPServeAccessProvider::serveBinary) having error on import payload (remote=%s): %v", r.RemoteAddr, err)
+	if dispatchedMessageCount, err := p.dispatchMessages(spanEmitter, r.Body); nil != err {
+		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider::serveBinary) having error on import payload (remote=%s): %v", r.RemoteAddr, err)
 		httpBadRequest(w, r)
 		return
 	} else if dispatchedMessageCount > 0 {
 		// log.Printf("TRACE: (HTTPServeAccessProvider::serveBinary) dispatched %d.", dispatchedMessageCount)
 		collectTimeout = fastEmptyMessageCollectTimeout
 	}
-	resultPayload, _, err := p.packMessages(r.Context(), collectTimeout)
+	resultPayload, _, err := p.packMessages(r.Context(), spanEmitter, collectTimeout)
 	if nil != err {
-		log.Printf("ERROR: (HTTPServeAccessProvider::serveBinary) having error on packaging payload (remote=%s): %v", r.RemoteAddr, err)
+		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider::serveBinary) having error on packaging payload (remote=%s): %v", r.RemoteAddr, err)
 		http.Error(w, "500 internal error", http.StatusInternalServerError)
+		return
 	}
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", strconv.FormatInt(int64(len(resultPayload)), 10))
 	w.WriteHeader(http.StatusOK)
 	w.Write(resultPayload)
+	spanEmitter.FinishSpan("success")
 }
 
-func (p *serverAccessChannel) serveText(w http.ResponseWriter, r *http.Request) {
+func (p *serverAccessChannel) serveText(spanEmitter *qabalwrap.TraceEmitter, w http.ResponseWriter, r *http.Request) {
+	spanEmitter = spanEmitter.StartSpan("server-access-ch-txt")
 	if r.Method != http.MethodPost {
-		log.Printf("ERROR: (HTTPServeAccessProvider::serveText) wrong http method (remote=%s): %v", r.RemoteAddr, r.Method)
+		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider::serveText) wrong http method (remote=%s): %v", r.RemoteAddr, r.Method)
 		httpBadRequest(w, r)
 		return
 	}
 	b64decoder := base64.NewDecoder(base64.StdEncoding, r.Body)
 	collectTimeout := slowEmptyMessageCollectTimeout
-	if dispatchedMessageCount, err := p.dispatchMessages(b64decoder); nil != err {
-		log.Printf("ERROR: (HTTPServeAccessProvider::serveText) having error on import payload (remote=%s): %v", r.RemoteAddr, err)
+	if dispatchedMessageCount, err := p.dispatchMessages(spanEmitter, b64decoder); nil != err {
+		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider::serveText) having error on import payload (remote=%s): %v", r.RemoteAddr, err)
 		httpBadRequest(w, r)
 		return
 	} else if dispatchedMessageCount > 0 {
 		// log.Printf("TRACE: (HTTPServeAccessProvider::serveText) dispatched %d.", dispatchedMessageCount)
 		collectTimeout = fastEmptyMessageCollectTimeout
 	}
-	resultBinaries, _, err := p.packMessages(r.Context(), collectTimeout)
+	resultBinaries, _, err := p.packMessages(r.Context(), spanEmitter, collectTimeout)
 	if nil != err {
-		log.Printf("ERROR: (HTTPServeAccessProvider::serveText) having error on packaging payload (remote=%s): %v", r.RemoteAddr, err)
+		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider::serveText) having error on packaging payload (remote=%s): %v", r.RemoteAddr, err)
 		http.Error(w, "500 internal error", http.StatusInternalServerError)
+		return
 	}
 	resultPayload := make([]byte, base64.StdEncoding.EncodedLen(len(resultBinaries)))
 	base64.StdEncoding.Encode(resultPayload, resultBinaries)
@@ -82,26 +87,35 @@ func (p *serverAccessChannel) serveText(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Length", strconv.FormatInt(int64(len(resultPayload)), 10))
 	w.WriteHeader(http.StatusOK)
 	w.Write(resultPayload)
+	spanEmitter.FinishSpan("success")
 }
 
-func (p *serverAccessChannel) Start(ctx context.Context, waitGroup *sync.WaitGroup) (err error) {
+func (p *serverAccessChannel) Start(ctx context.Context, waitGroup *sync.WaitGroup, spanEmitter *qabalwrap.TraceEmitter) (err error) {
 	return
 }
 
-func (p *serverAccessChannel) BlockingEmitMessage(rawMessage *qabalwrap.EnvelopedMessage) (err error) {
+func (p *serverAccessChannel) BlockingEmitMessage(spanEmitter *qabalwrap.TraceEmitter, rawMessage *qabalwrap.EnvelopedMessage) (err error) {
 	// log.Printf("TRACE: (HTTPServeAccessChannel::EmitMessage) blocking s=%d, d=%d, hop=%d", rawMessage.SourceServiceIdent, rawMessage.DestinationServiceIdent, rawMessage.RemainHops)
-	return p.blockingEmitMessage(p.ctx, rawMessage)
+	spanEmitter = spanEmitter.StartSpan("http-access-server-block-emit")
+	err = p.blockingEmitMessage(p.ctx, spanEmitter, rawMessage)
+	spanEmitter.FinishSpanCheckErr(err)
+	return
 }
 
-func (p *serverAccessChannel) NonblockingEmitMessage(rawMessage *qabalwrap.EnvelopedMessage) (emitSuccess bool) {
+func (p *serverAccessChannel) NonblockingEmitMessage(spanEmitter *qabalwrap.TraceEmitter, rawMessage *qabalwrap.EnvelopedMessage) (emitSuccess bool) {
 	// log.Printf("TRACE: (HTTPServeAccessChannel::EmitMessage) non-blocking s=%d, d=%d, hop=%d", rawMessage.SourceServiceIdent, rawMessage.DestinationServiceIdent, rawMessage.RemainHops)
-	return p.nonblockingEmitMessage(p.ctx, rawMessage)
+	spanEmitter = spanEmitter.StartSpan("http-access-server-nonblock-emit")
+	emitSuccess = p.nonblockingEmitMessage(p.ctx, spanEmitter, rawMessage)
+	spanEmitter.FinishSpanCheckBool(emitSuccess)
+	return
 }
 
 type HTTPServeAccessProvider struct {
 	qabalwrap.ServiceBase
 
 	accessChannels []*serverAccessChannel
+
+	diagnosisEmitter *qabalwrap.DiagnosisEmitter
 }
 
 func NewHTTPServeAccessProvider(accessChannelSize int) (p *HTTPServeAccessProvider) {
@@ -127,15 +141,16 @@ func (p *HTTPServeAccessProvider) AddAccessChannel(ctx context.Context, channelI
 }
 
 func (p *HTTPServeAccessProvider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	spanEmitter := p.diagnosisEmitter.StartTrace("http-serve-access-provider: %s", r.URL.Path)
 	reqPath := r.URL.Path
 	if len(reqPath) < 5 {
-		log.Printf("WARN: (HTTPServeAccessProvider) bad path: remote=%s, path=%v.", r.RemoteAddr, reqPath)
+		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider) bad path: remote=%s, path=%v.", r.RemoteAddr, reqPath)
 		http.NotFound(w, r)
 		return
 	}
 	chIndex := int(reqPath[1] - '0')
 	if (chIndex < 0) || (chIndex > len(p.accessChannels)) {
-		log.Printf("WARN: (HTTPServeAccessProvider) bad channel index: remote=%s, path=%v, ch-index=%d.", r.RemoteAddr, reqPath, chIndex)
+		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider) bad channel index: remote=%s, path=%v, ch-index=%d.", r.RemoteAddr, reqPath, chIndex)
 		http.NotFound(w, r)
 		return
 	}
@@ -143,14 +158,27 @@ func (p *HTTPServeAccessProvider) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	routeChar := reqPath[3]
 	switch routeChar {
 	case 'b':
-		accessChRef.serveBinary(w, r)
+		accessChRef.serveBinary(spanEmitter, w, r)
 	case 't':
-		accessChRef.serveText(w, r)
+		accessChRef.serveText(spanEmitter, w, r)
 	}
+	spanEmitter.FinishSpan("success")
+}
+
+// Setup prepare provider for operation.
+// Should only invoke at maintenance thread in setup stage.
+func (p *HTTPServeAccessProvider) Setup(
+	diagnosisEmitter *qabalwrap.DiagnosisEmitter,
+	certProvider qabalwrap.CertificateProvider) (err error) {
+	p.diagnosisEmitter = diagnosisEmitter
+	for _, c := range p.accessChannels {
+		c.diagnosisEmitter = diagnosisEmitter
+	}
+	return
 }
 
 // ReceiveMessage implement ServiceProvider interface.
-func (p *HTTPServeAccessProvider) ReceiveMessage(rawMessage *qabalwrap.EnvelopedMessage) (err error) {
+func (p *HTTPServeAccessProvider) ReceiveMessage(spanEmitter *qabalwrap.TraceEmitter, rawMessage *qabalwrap.EnvelopedMessage) (err error) {
 	log.Printf("WARN: (HTTPServeAccessProvider::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", rawMessage.SourceServiceIdent, rawMessage.DestinationServiceIdent, rawMessage.MessageContentType())
 	return
 }

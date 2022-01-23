@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 
@@ -45,12 +44,12 @@ func newHTTPContentFetchSlot(ctx context.Context, upstreamFetcher *HTTPContentFe
 	return
 }
 
-func (slot *httpContentFetchSlot) sendToPeer(resp *qbw1grpcgen.HTTPContentResponse) {
-	slot.msgSender.Send(slot.peerSerialIdent, qabalwrap.MessageContentHTTPContentResponse, resp)
+func (slot *httpContentFetchSlot) sendToPeer(spanEmitter *qabalwrap.TraceEmitter, resp *qbw1grpcgen.HTTPContentResponse) {
+	slot.msgSender.Send(spanEmitter, slot.peerSerialIdent, qabalwrap.MessageContentHTTPContentResponse, resp)
 }
 
-func (slot *httpContentFetchSlot) errorToPeer(err error) {
-	slot.sendToPeer(&qbw1grpcgen.HTTPContentResponse{
+func (slot *httpContentFetchSlot) errorToPeer(spanEmitter *qabalwrap.TraceEmitter, err error) {
+	slot.sendToPeer(spanEmitter, &qbw1grpcgen.HTTPContentResponse{
 		ResponseIdent:   slot.slotIdent,
 		RequestIdent:    slot.requestIdent,
 		ResultStateCode: http.StatusInternalServerError,
@@ -59,25 +58,26 @@ func (slot *httpContentFetchSlot) errorToPeer(err error) {
 	})
 }
 
-func (slot *httpContentFetchSlot) runWebSocket(targetURL *url.URL, h http.Header) {
-
+func (slot *httpContentFetchSlot) runWebSocket(spanEmitter *qabalwrap.TraceEmitter, targetURL *url.URL, h http.Header) {
+	spanEmitter.EventErrorf("run-websocket not implement yet")
 }
 
-func (slot *httpContentFetchSlot) runRegular(targetURL *url.URL, req *qbw1grpcgen.HTTPContentRequest) {
+func (slot *httpContentFetchSlot) runRegular(spanEmitter *qabalwrap.TraceEmitter, targetURL *url.URL, req *qbw1grpcgen.HTTPContentRequest) {
+	spanEmitter = spanEmitter.StartSpan("http-content-fetch-run-regular")
 	var httpReq *http.Request
 	var err error
 	if req.IsComplete {
 		if len(req.ContentBody) > 0 {
 			httpReq, err = http.NewRequestWithContext(slot.ctx, req.RequestMethod, targetURL.String(), bytes.NewReader(req.ContentBody))
-			// log.Printf("TRACE: (httpContentFetchSlot::run) request method=%s, url=[%s] with content (len=%d)", req.RequestMethod, targetURL.String(), len(req.ContentBody))
+			spanEmitter.EventInfof("(httpContentFetchSlot::run) request method=%s, url=[%s] with content (len=%d)", req.RequestMethod, targetURL.String(), len(req.ContentBody))
 		} else {
 			httpReq, err = http.NewRequestWithContext(slot.ctx, req.RequestMethod, targetURL.String(), nil)
-			// log.Printf("TRACE: (httpContentFetchSlot::run) request method=%s, url=[%s] without content", req.RequestMethod, targetURL.String())
+			spanEmitter.EventInfof("(httpContentFetchSlot::run) request method=%s, url=[%s] without content", req.RequestMethod, targetURL.String())
 		}
 	} else {
 		reqBodyReader, reqBodyWriter := io.Pipe()
 		httpReq, err = http.NewRequestWithContext(slot.ctx, req.RequestMethod, targetURL.String(), reqBodyReader)
-		// log.Printf("TRACE: (httpContentFetchSlot::run) request method=%s, url=[%s] with large content", req.RequestMethod, targetURL.String())
+		spanEmitter.EventInfof("(httpContentFetchSlot::run) request method=%s, url=[%s] with large content", req.RequestMethod, targetURL.String())
 		go func() {
 			if len(req.ContentBody) > 0 {
 				reqBodyWriter.Write(req.ContentBody)
@@ -85,7 +85,7 @@ func (slot *httpContentFetchSlot) runRegular(targetURL *url.URL, req *qbw1grpcge
 			for {
 				req1 := <-slot.reqCh
 				if req1 == nil {
-					// log.Printf("TRACE: (httpContentFetchSlot::run) request method=%s, url=[%s] empty request-1", req.RequestMethod, targetURL.String())
+					spanEmitter.EventInfof("(httpContentFetchSlot::run) empty request-1")
 					break
 				}
 				if len(req1.ContentBody) > 0 {
@@ -93,20 +93,22 @@ func (slot *httpContentFetchSlot) runRegular(targetURL *url.URL, req *qbw1grpcge
 					reqBodyWriter.Write(req1.ContentBody)
 				}
 				if req1.IsComplete {
-					// log.Printf("TRACE: (httpContentFetchSlot::run) request method=%s, url=[%s] request complete", req.RequestMethod, targetURL.String())
+					spanEmitter.EventInfof("(httpContentFetchSlot::run) request complete")
 					break
 				}
 			}
 			// log.Printf("TRACE: (httpContentFetchSlot::run) request method=%s, url=[%s] leaving content write", req.RequestMethod, targetURL.String())
 			reqBodyWriter.Close()
+			spanEmitter.EventInfof("(httpContentFetchSlot::run) stopping request content write")
 		}()
 	}
 	if nil != err {
-		log.Printf("ERROR: (httpContentFetchSlot::run) cannot construct request: %v", err)
-		slot.errorToPeer(err)
+		slot.errorToPeer(spanEmitter, err)
+		spanEmitter.FinishSpanErrorf("failed: (httpContentFetchSlot::run) cannot construct request: %v", err)
 		return
 	}
 	slot.sendToPeer(
+		spanEmitter,
 		&qbw1grpcgen.HTTPContentResponse{
 			ResponseIdent: slot.slotIdent,
 			RequestIdent:  slot.requestIdent,
@@ -119,18 +121,20 @@ func (slot *httpContentFetchSlot) runRegular(targetURL *url.URL, req *qbw1grpcge
 	httpReq.Header = req.GetHeadersHTTPHeader()
 	resp, err := httpDefaultClient.Do(httpReq)
 	if nil != err {
-		log.Printf("ERROR: (httpContentFetchSlot::run) cannot issue request: %v", err)
-		slot.errorToPeer(err)
+		spanEmitter.FinishSpanErrorf("failed: (httpContentFetchSlot::run) cannot issue request: %v", err)
+		slot.errorToPeer(spanEmitter, err)
 		return
 	}
 	defer resp.Body.Close()
 	respContentFullBuf := make([]byte, 1024*16)
 	respContentBuf, respCompleted, err := readBytesChunk(respContentFullBuf, resp.Body)
 	if nil != err {
-		slot.errorToPeer(err)
+		slot.errorToPeer(spanEmitter, err)
+		spanEmitter.FinishSpanErrorf("failed: (httpContentFetchSlot::run) read fetched content failed: %v", err)
 		return
 	}
 	slot.sendToPeer(
+		spanEmitter,
 		&qbw1grpcgen.HTTPContentResponse{
 			ResponseIdent:   slot.slotIdent,
 			RequestIdent:    slot.requestIdent,
@@ -141,10 +145,11 @@ func (slot *httpContentFetchSlot) runRegular(targetURL *url.URL, req *qbw1grpcge
 		})
 	for !respCompleted {
 		if respContentBuf, respCompleted, err = readBytesChunk(respContentFullBuf, resp.Body); nil != err {
-			log.Printf("ERROR: (httpContentFetchSlot::run) failed on loading respponse: %v", err)
+			spanEmitter.EventErrorf("(httpContentFetchSlot::run) failed on loading respponse: %v", err)
 			respCompleted = true
 		}
 		slot.sendToPeer(
+			spanEmitter,
 			&qbw1grpcgen.HTTPContentResponse{
 				ResponseIdent: slot.slotIdent,
 				RequestIdent:  slot.requestIdent,
@@ -152,18 +157,21 @@ func (slot *httpContentFetchSlot) runRegular(targetURL *url.URL, req *qbw1grpcge
 				IsComplete:    respCompleted,
 			})
 	}
+	spanEmitter.FinishSpan("success")
 }
 
-func (slot *httpContentFetchSlot) run(req *qbw1grpcgen.HTTPContentRequest) {
+func (slot *httpContentFetchSlot) run(spanEmitter *qabalwrap.TraceEmitter, req *qbw1grpcgen.HTTPContentRequest) {
+	spanEmitter = spanEmitter.StartSpan("http-content-fetch-slot-run")
 	defer slot.close()
 	targetURL := slot.upstreamFetcher.targetBaseURL
 	targetURL.Path = req.UrlPath
 	targetURL.RawQuery = req.UrlQuery
 	if req.RequestMethod == httpContentRequestMethodWebSocket {
-		slot.runWebSocket(&targetURL, req.GetHeadersHTTPHeader())
+		slot.runWebSocket(spanEmitter, &targetURL, req.GetHeadersHTTPHeader())
 	} else {
-		slot.runRegular(&targetURL, req)
+		slot.runRegular(spanEmitter, &targetURL, req)
 	}
+	spanEmitter.FinishSpan("success")
 }
 
 func (slot *httpContentFetchSlot) release() {

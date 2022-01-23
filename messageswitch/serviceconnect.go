@@ -1,7 +1,6 @@
 package messageswitch
 
 import (
-	"log"
 	"sort"
 	"sync"
 
@@ -89,7 +88,7 @@ func fillKnownServiceIdentsMessage(msg *qbw1grpcgen.KnownServiceIdents, refs []*
 			LinkHopSwitchSerialIdent: int32(linkHopSwitchSerialIdent),
 		}
 		serviceIdents = append(serviceIdents, &srvIdent)
-		log.Printf("TRACE: (fillKnownServiceIdentsMessage) %d/%s hop=%d:%d.", srvRef.SerialIdent, srvRef.TextIdent, linkHopCountValue, linkHopSwitchSerialIdent)
+		// log.Printf("TRACE: (fillKnownServiceIdentsMessage) %d/%s hop=%d:%d.", srvRef.SerialIdent, srvRef.TextIdent, linkHopCountValue, linkHopSwitchSerialIdent)
 	}
 	msg.MaxSerialIdent = int32(maxSerialIdent)
 	if len(serviceIdents) > 0 {
@@ -133,31 +132,51 @@ func (c *serviceConnect) setServiceProvider(serviceProvider qabalwrap.ServicePro
 
 // setRelayProviders connect given relayProviders with service.
 // Should only invoke at setup stage or before service ident assignment.
-func (c *serviceConnect) setRelayProviders(relayProviders []qabalwrap.RelayProvider) {
-	if (c == nil) || (c.serviceProvider != nil) || (len(relayProviders) == len(c.relayStatsByIndex)) {
+func (c *serviceConnect) setRelayProviders(spanEmitter *qabalwrap.TraceEmitter, relayProviders []qabalwrap.RelayProvider) {
+	spanEmitter = spanEmitter.StartSpan("service-connect-set-relay-provider")
+	if c == nil {
+		spanEmitter.FinishSpan("success: empty service connect")
+		return
+	} else if c.serviceProvider != nil {
+		spanEmitter.FinishSpan("success: service provider not empty")
+		return
+	} else if len(relayProviders) == len(c.relayStatsByIndex) {
+		spanEmitter.FinishSpan("success: equal relay provider count")
 		return
 	}
 	c.relayStatsByHop = newServiceRelays(relayProviders)
 	c.relayStatsByIndex = make([]*serviceRelay, len(c.relayStatsByHop))
 	copy(c.relayStatsByIndex, c.relayStatsByHop)
+	spanEmitter.FinishSpan("success")
 }
 
-func (c *serviceConnect) setMessageSender(s *MessageSwitch) {
-	if (c == nil) || c.alreadySetMessageSender || (c.serviceProvider == nil) || (c.SerialIdent == qabalwrap.UnknownServiceIdent) {
+func (c *serviceConnect) setMessageSender(spanEmitter *qabalwrap.TraceEmitter, s *MessageSwitch) {
+	spanEmitter = spanEmitter.StartSpan("service-connect-set-message-sender")
+	if c == nil {
+		spanEmitter.FinishSpan("success: empty service connect")
+		return
+	} else if c.alreadySetMessageSender {
+		spanEmitter.FinishSpan("success: already set message sender (serial-ident=%d)", c.SerialIdent)
+		return
+	} else if c.serviceProvider == nil {
+		spanEmitter.FinishSpan("success: service provider is empty (serial-ident=%d)", c.SerialIdent)
+		return
+	} else if c.SerialIdent == qabalwrap.UnknownServiceIdent {
+		spanEmitter.FinishSpan("success: unknown service serial identifier")
 		return
 	}
 	sender := newMessageSender(c.SerialIdent, s)
 	c.serviceProvider.SetMessageSender(sender)
 	c.alreadySetMessageSender = true
-	log.Printf("INFO: associate service provider (%d) with message sender.", c.SerialIdent)
+	spanEmitter.FinishSpan("success: associate service provider (%d) with message sender.", c.SerialIdent)
 }
 
-func (c *serviceConnect) updateRelayHopCount(relayIndex, hopCount, relaySwitchSerialIdent int) {
+func (c *serviceConnect) updateRelayHopCount(spanEmitter *qabalwrap.TraceEmitter, relayIndex, hopCount, relaySwitchSerialIdent int) {
 	if c.serviceProvider != nil {
 		return
 	}
 	if (relayIndex < 0) || (relayIndex >= len(c.relayStatsByIndex)) {
-		log.Printf("ERROR: (serviceConnect::updateRelayHopCount) invalid relay index: %d (realy-count=%d)", relayIndex, len(c.relayStatsByIndex))
+		spanEmitter.EventErrorf("(serviceConnect::updateRelayHopCount) invalid relay index: %d (realy-count=%d)", relayIndex, len(c.relayStatsByIndex))
 		return
 	}
 	c.lckRelayStats.Lock()
@@ -188,18 +207,21 @@ func (c *serviceConnect) relayProvidersInEmitOrder() (relayProviders []qabalwrap
 	return
 }
 
-func (c *serviceConnect) emitMessage(envelopedMessage *qabalwrap.EnvelopedMessage) (err error) {
+func (c *serviceConnect) emitMessage(spanEmitter *qabalwrap.TraceEmitter, envelopedMessage *qabalwrap.EnvelopedMessage) (err error) {
+	spanEmitter = spanEmitter.StartSpan("service-connect-emit-message: %s", c.TextIdent)
 	relayProviders := c.relayProvidersInEmitOrder()
 	if len(relayProviders) == 0 {
 		err = ErrRelayLinksUnreachable(c.SerialIdent)
+		spanEmitter.FinishSpan("failed: relay links unreachable")
 		return
 	}
 	for _, relayProvider := range relayProviders {
-		if err = relayProvider.BlockingEmitMessage(envelopedMessage); nil != err {
+		if err = relayProvider.BlockingEmitMessage(spanEmitter, envelopedMessage); nil != err {
 			continue
 		}
+		spanEmitter.FinishSpan("success")
 		return
 	}
-	log.Printf("ERROR: emit message for [%s]: err=%v", c.TextIdent, err)
+	spanEmitter.FinishSpanErrorf("failed: (serviceConnect::emitMessage) emit message for [%s]: err=%v", c.TextIdent, err)
 	return
 }

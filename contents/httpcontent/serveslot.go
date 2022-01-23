@@ -12,11 +12,16 @@ import (
 	"github.com/qabalwrap/qabalwrap-1/gen/qbw1grpcgen"
 )
 
+type tracedHTTPContentResponse struct {
+	spanEmitter     *qabalwrap.TraceEmitter
+	contentResponse *qbw1grpcgen.HTTPContentResponse
+}
+
 type httpContentTransferSlot struct {
 	ctx       context.Context
 	slotIndex int
 	slotIdent int32
-	respCh    chan *qbw1grpcgen.HTTPContentResponse
+	respCh    chan *tracedHTTPContentResponse
 
 	messageSender     qabalwrap.MessageSender
 	fetcherSeriaIdent int
@@ -32,18 +37,19 @@ func newHTTPContentTransferSlot(ctx context.Context, slotIndex int, messageSende
 		ctx:               ctx,
 		slotIndex:         slotIndex,
 		slotIdent:         slotIdent,
-		respCh:            make(chan *qbw1grpcgen.HTTPContentResponse, transferSlotResponseBufferSize),
+		respCh:            make(chan *tracedHTTPContentResponse, transferSlotResponseBufferSize),
 		messageSender:     messageSender,
 		fetcherSeriaIdent: fetcherSeriaIdent,
 	}
 	return
 }
 
-func (slot *httpContentTransferSlot) sendToPeer(req *qbw1grpcgen.HTTPContentRequest) {
-	slot.messageSender.Send(slot.fetcherSeriaIdent, qabalwrap.MessageContentHTTPContentRequest, req)
+func (slot *httpContentTransferSlot) sendToPeer(spanEmitter *qabalwrap.TraceEmitter, req *qbw1grpcgen.HTTPContentRequest) {
+	slot.messageSender.Send(spanEmitter, slot.fetcherSeriaIdent, qabalwrap.MessageContentHTTPContentRequest, req)
 }
 
-func (slot *httpContentTransferSlot) serveWebSocket(w http.ResponseWriter, r *http.Request) {
+func (slot *httpContentTransferSlot) serveWebSocket(spanEmitter *qabalwrap.TraceEmitter, w http.ResponseWriter, r *http.Request) {
+	spanEmitter = spanEmitter.StartSpan("serve-websocket")
 	req0 := qbw1grpcgen.HTTPContentRequest{
 		RequestIdent:  slot.slotIdent,
 		UrlPath:       r.URL.Path,
@@ -52,15 +58,18 @@ func (slot *httpContentTransferSlot) serveWebSocket(w http.ResponseWriter, r *ht
 		Headers:       qbw1grpcgen.NewKeyValuesFromHTTPHeader(r.Header),
 		IsComplete:    true,
 	}
-	slot.sendToPeer(&req0)
+	slot.sendToPeer(spanEmitter, &req0)
 	// TODO: impl
+	spanEmitter.FinishSpan("failed: not implement yet")
 }
 
-func (slot *httpContentTransferSlot) serveRegular(w http.ResponseWriter, r *http.Request) {
+func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEmitter, w http.ResponseWriter, r *http.Request) {
+	spanEmitter = spanEmitter.StartSpan("serve-regular")
 	reqContentFullBuf := make([]byte, 1024)
 	reqContentBuf, reqCompleted, err := readBytesChunk(reqContentFullBuf, r.Body)
 	if nil != err {
 		http.Error(w, "cannot load request", http.StatusBadRequest)
+		spanEmitter.FinishSpan("failed: cannot load request: %v", err)
 		return
 	}
 	req0 := &qbw1grpcgen.HTTPContentRequest{
@@ -73,17 +82,18 @@ func (slot *httpContentTransferSlot) serveRegular(w http.ResponseWriter, r *http
 		ContentBody:   reqContentBuf,
 		IsComplete:    reqCompleted,
 	}
-	slot.sendToPeer(req0)
-	log.Printf("TRACE: (serveRegular) slot %d [%s / %s] remote=<%s> complete=%v, buf-size=%d.", slot.slotIdent, r.Host, r.URL.Path, r.RemoteAddr, reqCompleted, len(reqContentBuf))
+	slot.sendToPeer(spanEmitter, req0)
+	spanEmitter.EventInfof("(serveRegular) slot %d [%s / %s] remote=<%s> complete=%v, buf-size=%d.", slot.slotIdent, r.Host, r.URL.Path, r.RemoteAddr, reqCompleted, len(reqContentBuf))
 	select {
-	case resp := <-slot.respCh:
-		if resp == nil {
+	case tracedResp := <-slot.respCh:
+		if (tracedResp == nil) || (tracedResp.contentResponse == nil) {
 			http.Error(w, "timeout", http.StatusBadGateway)
-			log.Print("ERROR: (serveRegular) cannot have request response.")
+			spanEmitter.FinishSpan("failed: (serveRegular) cannot have request response.")
 			return
 		}
+		resp := tracedResp.contentResponse
 		slot.responseIdent = resp.ResponseIdent
-		log.Printf("TRACE: (serveRegular) slot %d bind with response %d.", slot.slotIdent, resp.ResponseIdent)
+		spanEmitter.EventInfof("(serveRegular) slot %d bind with response %d.", slot.slotIdent, resp.ResponseIdent)
 		if resp.IsComplete {
 			if resp.ResultStateCode != 0 {
 				w.WriteHeader(int(resp.ResultStateCode))
@@ -93,37 +103,40 @@ func (slot *httpContentTransferSlot) serveRegular(w http.ResponseWriter, r *http
 			if len(resp.ContentBody) > 0 {
 				w.Write(resp.ContentBody)
 			}
+			spanEmitter.FinishSpan("success: complete in one packet")
 			return
 		}
 	case <-slot.ctx.Done():
 		http.Error(w, "interrupted", http.StatusBadGateway)
+		spanEmitter.FinishSpan("failed: interrupted at request collect stage")
 		return
 	}
 	for !reqCompleted {
 		if reqContentBuf, reqCompleted, err = readBytesChunk(reqContentFullBuf, r.Body); nil != err {
-			log.Printf("ERROR: (HTTPContentServeHandler) load request failed (remaining parts): %v", err)
+			spanEmitter.EventErrorf("(HTTPContentServeHandler) load request failed (remaining parts): %v", err)
 			reqCompleted = true
 		}
-		// log.Printf("TRACE: (HTTPContentServeHandler) load remaining request content: complete=%v, buf-size=%d", reqCompleted, len(reqContentBuf))
+		spanEmitter.EventInfof("(HTTPContentServeHandler) load remaining request content: complete=%v, buf-size=%d", reqCompleted, len(reqContentBuf))
 		req0 = &qbw1grpcgen.HTTPContentRequest{
 			RequestIdent:  slot.slotIdent,
 			ResponseIdent: slot.responseIdent,
 			ContentBody:   reqContentBuf,
 			IsComplete:    reqCompleted,
 		}
-		slot.sendToPeer(req0)
+		slot.sendToPeer(spanEmitter, req0)
 	}
 	emitedHeader := false
 	for {
 		select {
-		case resp := <-slot.respCh:
-			if resp == nil {
+		case tracedResp := <-slot.respCh:
+			if (tracedResp == nil) || (tracedResp.contentResponse == nil) {
 				if !emitedHeader {
 					http.Error(w, "timeout", http.StatusBadGateway)
 				}
-				log.Print("ERROR: (serveRegular) cannot have request response.")
+				spanEmitter.FinishSpanErrorf("failed: (serveRegular) cannot have request response.")
 				return
 			}
+			resp := tracedResp.contentResponse
 			if (!emitedHeader) && (resp.ResultStateCode != 0) {
 				for _, kv := range resp.Headers {
 					for _, vv := range kv.Values {
@@ -137,24 +150,26 @@ func (slot *httpContentTransferSlot) serveRegular(w http.ResponseWriter, r *http
 				w.Write(resp.ContentBody)
 			}
 			if resp.IsComplete {
+				spanEmitter.FinishSpan("success: complete in multiple packet")
 				return
 			}
 		case <-slot.ctx.Done():
 			if !emitedHeader {
 				http.Error(w, "interrupted", http.StatusBadGateway)
 			}
+			spanEmitter.FinishSpan("failed: interrupted at response stage")
 			return
 		}
 	}
 }
 
-func (slot *httpContentTransferSlot) serve(w http.ResponseWriter, r *http.Request) {
+func (slot *httpContentTransferSlot) serve(spanEmitter *qabalwrap.TraceEmitter, w http.ResponseWriter, r *http.Request) {
 	if checkHeaderToken(r.Header, "Connection", "upgrade") && checkHeaderToken(r.Header, "Upgrade", "websocket") {
 		log.Printf("INFO: having websocket request at [%s]", r.URL.Path)
-		slot.serveWebSocket(w, r)
+		slot.serveWebSocket(spanEmitter, w, r)
 		return
 	}
-	slot.serveRegular(w, r)
+	slot.serveRegular(spanEmitter, w, r)
 }
 
 func (slot *httpContentTransferSlot) release() {
