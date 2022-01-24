@@ -37,7 +37,7 @@ func handleRootCertificateRequest(s *MessageSwitch, rootCertReq *rootCertRequest
 		return
 	}
 	if err = s.forwardClearEnvelopedMessage(spanEmitter, m); nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (handleRootCertificateRequest) cannot emit enveloped message: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (handleRootCertificateRequest) cannot emit enveloped message: %v", err)
 	} else {
 		spanEmitter.FinishSpan("success: (handleRootCertificateRequest) responed: destination=%d", requestSourceIdent)
 	}

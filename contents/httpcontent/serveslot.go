@@ -83,7 +83,7 @@ func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEm
 		IsComplete:    reqCompleted,
 	}
 	slot.sendToPeer(spanEmitter, req0)
-	spanEmitter.EventInfof("(serveRegular) slot %d [%s / %s] remote=<%s> complete=%v, buf-size=%d.", slot.slotIdent, r.Host, r.URL.Path, r.RemoteAddr, reqCompleted, len(reqContentBuf))
+	spanEmitter.EventInfo("(serveRegular) slot %d [%s / %s] remote=<%s> complete=%v, buf-size=%d.", slot.slotIdent, r.Host, r.URL.Path, r.RemoteAddr, reqCompleted, len(reqContentBuf))
 	select {
 	case tracedResp := <-slot.respCh:
 		if (tracedResp == nil) || (tracedResp.contentResponse == nil) {
@@ -93,7 +93,7 @@ func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEm
 		}
 		resp := tracedResp.contentResponse
 		slot.responseIdent = resp.ResponseIdent
-		spanEmitter.EventInfof("(serveRegular) slot %d bind with response %d.", slot.slotIdent, resp.ResponseIdent)
+		spanEmitter.EventInfo("(serveRegular) slot %d bind with response %d.", slot.slotIdent, resp.ResponseIdent)
 		if resp.IsComplete {
 			if resp.ResultStateCode != 0 {
 				w.WriteHeader(int(resp.ResultStateCode))
@@ -113,10 +113,10 @@ func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEm
 	}
 	for !reqCompleted {
 		if reqContentBuf, reqCompleted, err = readBytesChunk(reqContentFullBuf, r.Body); nil != err {
-			spanEmitter.EventErrorf("(HTTPContentServeHandler) load request failed (remaining parts): %v", err)
+			spanEmitter.EventError("(HTTPContentServeHandler) load request failed (remaining parts): %v", err)
 			reqCompleted = true
 		}
-		spanEmitter.EventInfof("(HTTPContentServeHandler) load remaining request content: complete=%v, buf-size=%d", reqCompleted, len(reqContentBuf))
+		spanEmitter.EventInfo("(HTTPContentServeHandler) load remaining request content: complete=%v, buf-size=%d", reqCompleted, len(reqContentBuf))
 		req0 = &qbw1grpcgen.HTTPContentRequest{
 			RequestIdent:  slot.slotIdent,
 			ResponseIdent: slot.responseIdent,
@@ -133,7 +133,7 @@ func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEm
 				if !emitedHeader {
 					http.Error(w, "timeout", http.StatusBadGateway)
 				}
-				spanEmitter.FinishSpanErrorf("failed: (serveRegular) cannot have request response.")
+				spanEmitter.FinishSpanLogError("failed: (serveRegular) cannot have request response.")
 				return
 			}
 			resp := tracedResp.contentResponse

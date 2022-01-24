@@ -144,7 +144,7 @@ func (diag *DiagnosisEmitter) emitTraceRecordLogf(
 	diag.enqueueTraceRecord(traceEmitter, traceTypeIdent, messageText)
 }
 
-func (diag *DiagnosisEmitter) emitTraceRecordErrorf(
+func (diag *DiagnosisEmitter) emitTraceRecordErrLogf(
 	traceEmitter *TraceEmitter,
 	traceTypeIdent TraceType,
 	messageFmt string,
@@ -252,19 +252,19 @@ func (emitter *TraceEmitter) FinishSpan(traceMessageFmt string, a ...interface{}
 	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, TraceSpanFinish, traceMessageFmt, a...)
 }
 
-func (emitter *TraceEmitter) FinishSpanErrorf(traceMessageFmt string, a ...interface{}) {
-	emitter.diagnosisEmitter.emitTraceRecordErrorf(emitter, TraceSpanFinish, traceMessageFmt, a...)
+func (emitter *TraceEmitter) FinishSpanLogError(traceMessageFmt string, a ...interface{}) {
+	emitter.diagnosisEmitter.emitTraceRecordErrLogf(emitter, TraceSpanFinish, traceMessageFmt, a...)
 }
 
 func (emitter *TraceEmitter) FinishSpanFailedErr(err error) {
 	messageText := "failed: " + err.Error()
-	emitter.diagnosisEmitter.emitTraceRecordErrorf(emitter, TraceSpanFinish, messageText)
+	emitter.diagnosisEmitter.emitTraceRecordErrLogf(emitter, TraceSpanFinish, messageText)
 }
 
 func (emitter *TraceEmitter) FinishSpanCheckErr(err error) {
 	if nil != err {
 		messageText := "failed: " + err.Error()
-		emitter.diagnosisEmitter.emitTraceRecordErrorf(emitter, TraceSpanFinish, messageText)
+		emitter.diagnosisEmitter.emitTraceRecordErrLogf(emitter, TraceSpanFinish, messageText)
 		return
 	}
 	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, TraceSpanFinish, "success")
@@ -284,15 +284,15 @@ func (emitter *TraceEmitter) Logf(traceTypeIdent TraceType, traceMessageFmt stri
 	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, traceTypeIdent, traceMessageFmt, a...)
 }
 
-func (emitter *TraceEmitter) EventInfof(traceMessageFmt string, a ...interface{}) {
+func (emitter *TraceEmitter) EventInfo(traceMessageFmt string, a ...interface{}) {
 	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, EventInfo, traceMessageFmt, a...)
 }
 
-func (emitter *TraceEmitter) EventWarningf(traceMessageFmt string, a ...interface{}) {
+func (emitter *TraceEmitter) EventWarning(traceMessageFmt string, a ...interface{}) {
 	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, EventWarning, traceMessageFmt, a...)
 }
 
-func (emitter *TraceEmitter) EventErrorf(traceMessageFmt string, a ...interface{}) {
+func (emitter *TraceEmitter) EventError(traceMessageFmt string, a ...interface{}) {
 	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, EventError, traceMessageFmt, a...)
 }
 

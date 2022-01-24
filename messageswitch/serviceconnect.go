@@ -176,7 +176,7 @@ func (c *serviceConnect) updateRelayHopCount(spanEmitter *qabalwrap.TraceEmitter
 		return
 	}
 	if (relayIndex < 0) || (relayIndex >= len(c.relayStatsByIndex)) {
-		spanEmitter.EventErrorf("(serviceConnect::updateRelayHopCount) invalid relay index: %d (realy-count=%d)", relayIndex, len(c.relayStatsByIndex))
+		spanEmitter.EventError("(serviceConnect::updateRelayHopCount) invalid relay index: %d (realy-count=%d)", relayIndex, len(c.relayStatsByIndex))
 		return
 	}
 	c.lckRelayStats.Lock()
@@ -222,6 +222,6 @@ func (c *serviceConnect) emitMessage(spanEmitter *qabalwrap.TraceEmitter, envelo
 		spanEmitter.FinishSpan("success")
 		return
 	}
-	spanEmitter.FinishSpanErrorf("failed: (serviceConnect::emitMessage) emit message for [%s]: err=%v", c.TextIdent, err)
+	spanEmitter.FinishSpanLogError("failed: (serviceConnect::emitMessage) emit message for [%s]: err=%v", c.TextIdent, err)
 	return
 }

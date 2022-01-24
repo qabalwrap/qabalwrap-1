@@ -63,7 +63,7 @@ func (hnd *HTTPContentServeHandler) releaseTransferSlot(spanEmitter *qabalwrap.T
 	defer hnd.lckTransferSlots.Unlock()
 	targetIndex := transferSlot.slotIndex
 	if (hnd.transferSlots[targetIndex] == nil) || (hnd.transferSlots[targetIndex].slotIdent != transferSlot.slotIdent) {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPContentServeHandler::releaseTransferSlot) attempt to release non-matched slot: %d", transferSlot.slotIdent)
+		spanEmitter.FinishSpanLogError("failed: (HTTPContentServeHandler::releaseTransferSlot) attempt to release non-matched slot: %d", transferSlot.slotIdent)
 		return
 	}
 	hnd.transferSlots[targetIndex].release()
@@ -78,14 +78,14 @@ func (hnd *HTTPContentServeHandler) getTransferSlot(spanEmitter *qabalwrap.Trace
 	defer hnd.lckTransferSlots.Unlock()
 	idx := int(transferSlotIdent & 0x0000FFFF)
 	if (idx < 0) || (idx >= len(hnd.transferSlots)) {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPContentServeHandler::getTransferSlot) index out of range: %d, %d", transferSlotIdent, idx)
+		spanEmitter.FinishSpanLogError("failed: (HTTPContentServeHandler::getTransferSlot) index out of range: %d, %d", transferSlotIdent, idx)
 		return
 	}
 	if hnd.transferSlots[idx] == nil {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPContentServeHandler::getTransferSlot) identifier not existed: ident=%d, idx=%d", transferSlotIdent, idx)
+		spanEmitter.FinishSpanLogError("failed: (HTTPContentServeHandler::getTransferSlot) identifier not existed: ident=%d, idx=%d", transferSlotIdent, idx)
 		return
 	} else if hnd.transferSlots[idx].slotIdent != transferSlotIdent {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPContentServeHandler::getTransferSlot) identifier not match: ident=%d, idx=%d", transferSlotIdent, idx)
+		spanEmitter.FinishSpanLogError("failed: (HTTPContentServeHandler::getTransferSlot) identifier not match: ident=%d, idx=%d", transferSlotIdent, idx)
 		return
 	}
 	transferSlot = hnd.transferSlots[idx]
@@ -144,12 +144,12 @@ func (hnd *HTTPContentServeHandler) processContentResponse(
 	m *qbw1grpcgen.HTTPContentResponse,
 	sourceServiceIdent int) {
 	if m.RequestIdent == 0 {
-		spanEmitter.EventWarningf("(HTTPContentFetcher::processContentResponse) empty request identifier: response-ident=%d", m.ResponseIdent)
+		spanEmitter.EventWarning("(HTTPContentFetcher::processContentResponse) empty request identifier: response-ident=%d", m.ResponseIdent)
 		return
 	}
 	transferSlot := hnd.getTransferSlot(spanEmitter, m.RequestIdent)
 	if transferSlot == nil {
-		spanEmitter.EventWarningf("(HTTPContentFetcher::processContentResponse) transfer slot is gone: request-ident=%d, response-ident=%d", m.RequestIdent, m.ResponseIdent)
+		spanEmitter.EventWarning("(HTTPContentFetcher::processContentResponse) transfer slot is gone: request-ident=%d, response-ident=%d", m.RequestIdent, m.ResponseIdent)
 		hnd.messageSender.Send(spanEmitter, sourceServiceIdent, qabalwrap.MessageContentHTTPContentLinkClosed, &qbw1grpcgen.HTTPContentLinkClosed{
 			RequestIdent:  m.RequestIdent,
 			ResponseIdent: m.ResponseIdent,
@@ -176,13 +176,13 @@ func (hnd *HTTPContentServeHandler) ReceiveMessage(spanEmitter *qabalwrap.TraceE
 	case qabalwrap.MessageContentHTTPContentResponse:
 		var req qbw1grpcgen.HTTPContentResponse
 		if err = envelopedMessage.Unmarshal(&req); nil != err {
-			spanEmitter.FinishSpanErrorf("failed: (HTTPContentServeHandler::ReceiveMessage) unmarshal response failed: %v", err)
+			spanEmitter.FinishSpanLogError("failed: (HTTPContentServeHandler::ReceiveMessage) unmarshal response failed: %v", err)
 			return
 		}
 		hnd.processContentResponse(spanEmitter, &req, envelopedMessage.SourceServiceIdent)
 		spanEmitter.FinishSpan("success")
 	default:
-		spanEmitter.FinishSpanErrorf("failed: (HTTPContentServeHandler::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", envelopedMessage.SourceServiceIdent, envelopedMessage.DestinationServiceIdent, envelopedMessage.MessageContentType())
+		spanEmitter.FinishSpanLogError("failed: (HTTPContentServeHandler::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", envelopedMessage.SourceServiceIdent, envelopedMessage.DestinationServiceIdent, envelopedMessage.MessageContentType())
 	}
 	return
 }

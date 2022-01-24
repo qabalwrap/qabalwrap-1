@@ -34,11 +34,11 @@ func (b *crossBar) Init(
 	primaryCrossBar bool) (err error) {
 	spanEmitter = spanEmitter.StartSpan("crossbar-init")
 	if _, err = b.load(stateStore); nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (crossBar::Init) load service references failed: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (crossBar::Init) load service references failed: %v", err)
 		return
 	}
 	if err = b.attachServiceProvider(textIdent, messageSwitchServiceProvider); nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (crossBar::Init) attach message switch failed: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (crossBar::Init) attach message switch failed: %v", err)
 		return
 	}
 	if primaryCrossBar && ((len(b.connectsBySerialIdent) < 1) || (b.connectsBySerialIdent[0] == nil)) {
@@ -159,7 +159,7 @@ func (b *crossBar) postSetup(spanEmitter *qabalwrap.TraceEmitter) {
 	defer spanEmitter.FinishSpan("success")
 	for connIndex, connInst := range b.connectsBySerialIdent {
 		if connInst == nil {
-			spanEmitter.EventInfof("(crossBar::postSetup) empty service connection: index=%d", connIndex)
+			spanEmitter.EventInfo("(crossBar::postSetup) empty service connection: index=%d", connIndex)
 		}
 		connInst.setRelayProviders(spanEmitter, b.relayProviders)
 	}
@@ -168,7 +168,7 @@ func (b *crossBar) postSetup(spanEmitter *qabalwrap.TraceEmitter) {
 // relayLinkLosted mark relay of given index as lost on all service connections.
 func (b *crossBar) relayLinkLosted(spanEmitter *qabalwrap.TraceEmitter, relayIndex int) {
 	if (relayIndex < 0) || (relayIndex >= len(b.relayProviders)) {
-		spanEmitter.EventWarningf("(relayLinkLosted) invalid relay index: %d", relayIndex)
+		spanEmitter.EventWarning("(relayLinkLosted) invalid relay index: %d", relayIndex)
 		return
 	}
 	b.lckConnects.Lock()
@@ -260,11 +260,11 @@ func (b *crossBar) findServiceConnectByUUID(uniqueIdent uuid.UUID) (conn *servic
 func (b *crossBar) getServiceConnectByServiceReference(
 	spanEmitter *qabalwrap.TraceEmitter, serviceRef *ServiceReference) (conn *serviceConnect) {
 	if serviceRef.SerialIdent == qabalwrap.UnknownServiceIdent {
-		spanEmitter.EventWarningf("(attachServiceReference) attempt to attach service reference with unassigned service ident: %d (text=%s, unique=%s)", serviceRef.SerialIdent, serviceRef.TextIdent, serviceRef.UniqueIdent.String())
+		spanEmitter.EventWarning("(attachServiceReference) attempt to attach service reference with unassigned service ident: %d (text=%s, unique=%s)", serviceRef.SerialIdent, serviceRef.TextIdent, serviceRef.UniqueIdent.String())
 		return
 	}
 	if !serviceRef.IsNormalSerialIdent() {
-		spanEmitter.EventWarningf("(attachServiceReference) attempt to attach service reference with invalid service ident: %d (text=%s, unique=%s)", serviceRef.SerialIdent, serviceRef.TextIdent, serviceRef.UniqueIdent.String())
+		spanEmitter.EventWarning("(attachServiceReference) attempt to attach service reference with invalid service ident: %d (text=%s, unique=%s)", serviceRef.SerialIdent, serviceRef.TextIdent, serviceRef.UniqueIdent.String())
 		return
 	}
 	b.lckConnects.Lock()
@@ -332,7 +332,7 @@ func (b *crossBar) assignServiceSerialIdents(spanEmitter *qabalwrap.TraceEmitter
 		b.connectsBySerialIdent = append(b.connectsBySerialIdent, conn)
 		b.connectsByTextIdent[conn.TextIdent] = conn
 		b.connectsByUUID[conn.UniqueIdent] = conn
-		spanEmitter.EventInfof("(assignServiceSerialIdents) assigned %d/%s to %d",
+		spanEmitter.EventInfo("(assignServiceSerialIdents) assigned %d/%s to %d",
 			conn.TextIdent, conn.UniqueIdent.String(), serialIdent)
 	}
 	b.unassignConnects = nil
@@ -345,7 +345,7 @@ func (b *crossBar) addUnassignedServiceConnectByServiceReference(
 	spanEmitter *qabalwrap.TraceEmitter, serviceRef *ServiceReference) (conn *serviceConnect) {
 	spanEmitter = spanEmitter.StartSpan("add-unassigned-service-connect-by-service-ref")
 	if (serviceRef.SerialIdent != qabalwrap.UnknownServiceIdent) || serviceRef.IsNormalSerialIdent() {
-		spanEmitter.EventWarningf("(addUnassignedServiceConnectByServiceReference) attempt to allocate service reference with assigned service ident: %d (text=%s, unique=%s)", serviceRef.SerialIdent, serviceRef.TextIdent, serviceRef.UniqueIdent.String())
+		spanEmitter.EventWarning("(addUnassignedServiceConnectByServiceReference) attempt to allocate service reference with assigned service ident: %d (text=%s, unique=%s)", serviceRef.SerialIdent, serviceRef.TextIdent, serviceRef.UniqueIdent.String())
 		b.lckConnects.Lock()
 		defer b.lckConnects.Unlock()
 		if l := len(b.connectsBySerialIdent); (serviceRef.SerialIdent > 0) && (serviceRef.SerialIdent < l) {
@@ -424,14 +424,14 @@ func (b *crossBar) makeKnownServiceIdentsSnapshot(spanEmitter *qabalwrap.TraceEm
 	b.lckConnects.Lock()
 	defer b.lckConnects.Unlock()
 	if len(b.connectsBySerialIdent) <= 0 {
-		spanEmitter.EventInfof("(makeKnownServiceIdentsSnapshot) empty connects by serial ident")
+		spanEmitter.EventInfo("(makeKnownServiceIdentsSnapshot) empty connects by serial ident")
 		return
 	}
 	if err = fillKnownServiceIdentsMessage(msg, b.connectsBySerialIdent, localSwitchSerialIdent); nil != err {
-		spanEmitter.EventErrorf("(makeKnownServiceIdentsSnapshot) cannot fulfill known service identifiers message: %v", err)
+		spanEmitter.EventError("(makeKnownServiceIdentsSnapshot) cannot fulfill known service identifiers message: %v", err)
 		return
 	}
-	spanEmitter.EventInfof("(makeKnownServiceIdentsSnapshot) completed")
+	spanEmitter.EventInfo("(makeKnownServiceIdentsSnapshot) completed")
 	return
 }
 

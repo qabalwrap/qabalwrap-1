@@ -81,11 +81,11 @@ func (hnd *HTTPContentFetcher) getFetchSlot(spanEmitter *qabalwrap.TraceEmitter,
 	defer hnd.lckFetchSlots.Unlock()
 	idx := int(fetchSlotIdent & 0x0000FFFF)
 	if (idx < 0) || (idx >= len(hnd.fetchSlots)) {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPContentFetcher::getFetchSlot) index out of range: %d, %d", fetchSlotIdent, idx)
+		spanEmitter.FinishSpanLogError("failed: (HTTPContentFetcher::getFetchSlot) index out of range: %d, %d", fetchSlotIdent, idx)
 		return
 	}
 	if (hnd.fetchSlots[idx] == nil) || (hnd.fetchSlots[idx].slotIdent != fetchSlotIdent) {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPContentFetcher::getFetchSlot) identifier not match: %d, %d", fetchSlotIdent, idx)
+		spanEmitter.FinishSpanLogError("failed: (HTTPContentFetcher::getFetchSlot) identifier not match: %d, %d", fetchSlotIdent, idx)
 		return
 	}
 	fetchSlot = hnd.fetchSlots[idx]
@@ -153,7 +153,7 @@ func (hnd *HTTPContentFetcher) ReceiveMessage(spanEmitter *qabalwrap.TraceEmitte
 	case qabalwrap.MessageContentHTTPContentRequest:
 		var req qbw1grpcgen.HTTPContentRequest
 		if err = envelopedMessage.Unmarshal(&req); nil != err {
-			spanEmitter.FinishSpanErrorf("failed: (HTTPContentFetcher::ReceiveMessage::ContentRequest) unmarshal request failed: %v", err)
+			spanEmitter.FinishSpanLogError("failed: (HTTPContentFetcher::ReceiveMessage::ContentRequest) unmarshal request failed: %v", err)
 			return
 		}
 		hnd.processContentRequest(spanEmitter, envelopedMessage.SourceServiceIdent, &req)
@@ -161,13 +161,13 @@ func (hnd *HTTPContentFetcher) ReceiveMessage(spanEmitter *qabalwrap.TraceEmitte
 	case qabalwrap.MessageContentHTTPContentLinkClosed:
 		var req qbw1grpcgen.HTTPContentLinkClosed
 		if err = envelopedMessage.Unmarshal(&req); nil != err {
-			spanEmitter.FinishSpanErrorf("failed: (HTTPContentFetcher::ReceiveMessage::LinkClosed) unmarshal request failed: %v", err)
+			spanEmitter.FinishSpanLogError("failed: (HTTPContentFetcher::ReceiveMessage::LinkClosed) unmarshal request failed: %v", err)
 			return
 		}
 		hnd.processLinkClosed(spanEmitter, &req)
 		spanEmitter.FinishSpan("success: link close")
 	default:
-		spanEmitter.FinishSpanErrorf("failed: (HTTPContentFetcher::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", envelopedMessage.SourceServiceIdent, envelopedMessage.DestinationServiceIdent, envelopedMessage.MessageContentType())
+		spanEmitter.FinishSpanLogError("failed: (HTTPContentFetcher::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", envelopedMessage.SourceServiceIdent, envelopedMessage.DestinationServiceIdent, envelopedMessage.MessageContentType())
 	}
 	return
 }

@@ -25,12 +25,12 @@ func (s *messageSender) Send(
 	messageContent proto.Message) {
 	buf, err := proto.Marshal(messageContent)
 	if nil != err {
-		spanEmitter.EventErrorf("(messageSender::Send) cannot marshal message (service-serial=%d): %v", s.serviceSerialIdent, err)
+		spanEmitter.EventError("(messageSender::Send) cannot marshal message (service-serial=%d): %v", s.serviceSerialIdent, err)
 		return
 	}
 	msg := qabalwrap.NewClearEnvelopedMessage(s.serviceSerialIdent, destServiceIdent, messageContentType, buf)
 	if err = s.messageSwitch.forwardClearEnvelopedMessage(spanEmitter, msg); nil != err {
-		spanEmitter.EventErrorf("(messageSender::Send) cannot send message (service-serial: src=%d, dest%d): %v", s.serviceSerialIdent, destServiceIdent, err)
+		spanEmitter.EventError("(messageSender::Send) cannot send message (service-serial: src=%d, dest%d): %v", s.serviceSerialIdent, destServiceIdent, err)
 	}
 }
 

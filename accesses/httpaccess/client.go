@@ -107,14 +107,14 @@ func (p *HTTPClientAccessProvider) exchangeInBinary(spanEmitter *qabalwrap.Trace
 	spanEmitter = spanEmitter.StartSpan("client-access-xc-bin")
 	resultPayload, exportedMessageCount, err := p.packMessages(p.ctx, spanEmitter, collectTimeout)
 	if nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPClientAccessProvider::exchangeInBinary) having error on packaging payload: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInBinary) having error on packaging payload: %v", err)
 		return
 	}
 	targetURL := p.targetServerBaseURL + "/b/" + strconv.FormatInt(time.Now().UnixNano(), 16)
 	payloadReader := bytes.NewReader(resultPayload)
 	req, err := http.NewRequestWithContext(p.ctx, http.MethodPost, targetURL, payloadReader)
 	if nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPClientAccessProvider::exchangeInBinary) cannot create request: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInBinary) cannot create request: %v", err)
 		return
 	}
 	req.Header.Set("User-Agent", HTTPClientAccessProviderUserAgent)
@@ -124,7 +124,7 @@ func (p *HTTPClientAccessProvider) exchangeInBinary(spanEmitter *qabalwrap.Trace
 	}
 	resp, err := p.clientInst.Do(req)
 	if nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPClientAccessProvider::exchangeInBinary) error on emit request: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInBinary) error on emit request: %v", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -134,7 +134,7 @@ func (p *HTTPClientAccessProvider) exchangeInBinary(spanEmitter *qabalwrap.Trace
 		return
 	}
 	if dispatchedMessageCount, err = p.dispatchMessages(spanEmitter, resp.Body); nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPClientAccessProvider::exchangeInBinary) having error on import payload: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInBinary) having error on import payload: %v", err)
 		return
 	}
 	spanEmitter.FinishSpan("success: transmitted: up %d, down %d.", exportedMessageCount, dispatchedMessageCount)
@@ -145,7 +145,7 @@ func (p *HTTPClientAccessProvider) exchangeInText(spanEmitter *qabalwrap.TraceEm
 	spanEmitter = spanEmitter.StartSpan("client-access-xc-txt")
 	resultBinaries, exportedMessageCount, err := p.packMessages(p.ctx, spanEmitter, collectTimeout)
 	if nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPClientAccessProvider::exchangeInText) having error on packaging payload: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInText) having error on packaging payload: %v", err)
 		return
 	}
 	resultPayload := make([]byte, base64.StdEncoding.EncodedLen(len(resultBinaries)))
@@ -154,7 +154,7 @@ func (p *HTTPClientAccessProvider) exchangeInText(spanEmitter *qabalwrap.TraceEm
 	payloadReader := bytes.NewReader(resultPayload)
 	req, err := http.NewRequestWithContext(p.ctx, http.MethodPost, targetURL, payloadReader)
 	if nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPClientAccessProvider::exchangeInText) cannot create request: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInText) cannot create request: %v", err)
 		return
 	}
 	req.Header.Set("User-Agent", HTTPClientAccessProviderUserAgent)
@@ -164,7 +164,7 @@ func (p *HTTPClientAccessProvider) exchangeInText(spanEmitter *qabalwrap.TraceEm
 	}
 	resp, err := p.clientInst.Do(req)
 	if nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPClientAccessProvider::exchangeInText) error on emit request: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInText) error on emit request: %v", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -175,7 +175,7 @@ func (p *HTTPClientAccessProvider) exchangeInText(spanEmitter *qabalwrap.TraceEm
 	}
 	b64decoder := base64.NewDecoder(base64.StdEncoding, resp.Body)
 	if dispatchedMessageCount, err = p.dispatchMessages(spanEmitter, b64decoder); nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPClientAccessProvider::exchangeInText) having error on import payload: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInText) having error on import payload: %v", err)
 		return
 	}
 	spanEmitter.FinishSpan("success: transmitted: up %d, down %d.", exportedMessageCount, dispatchedMessageCount)
@@ -202,7 +202,7 @@ func (p *HTTPClientAccessProvider) exchangeLoop(waitGroup *sync.WaitGroup) {
 		}
 		// log.Printf("TRACE: (HTTPClientAccessProvider::exchangeLoop) exported=%d, dispatched=%d; err=%v.", exportedMessageCount, dispatchedMessageCount, err)
 		if nil != err {
-			spanEmitter.EventErrorf("(HTTPClientAccessProvider::ExchangeLoop) exchange failed: %v", err)
+			spanEmitter.EventError("(HTTPClientAccessProvider::ExchangeLoop) exchange failed: %v", err)
 			failureCount++
 			currentSessionTimestamp = 0
 		} else {
@@ -230,9 +230,9 @@ func (p *HTTPClientAccessProvider) exchangeLoop(waitGroup *sync.WaitGroup) {
 			case 5:
 				delay = time.Minute * 5
 			}
-			spanEmitter.EventInfof("(HTTPClientAccessProvider::exchangeLoop) delay for positive failure count: %v", delay)
+			spanEmitter.EventInfo("(HTTPClientAccessProvider::exchangeLoop) delay for positive failure count: %v", delay)
 			time.Sleep(delay)
-			spanEmitter.EventInfof("(HTTPClientAccessProvider::exchangeLoop) left delay: %v", delay)
+			spanEmitter.EventInfo("(HTTPClientAccessProvider::exchangeLoop) left delay: %v", delay)
 			p.clientInst.CloseIdleConnections()
 			collectTimeout = slowEmptyMessageCollectTimeout
 			spanEmitter.FinishSpan("success: continue (failureCount=%d)", failureCount)
@@ -245,7 +245,7 @@ func (p *HTTPClientAccessProvider) exchangeLoop(waitGroup *sync.WaitGroup) {
 		}
 		if time.Since(lastIdleClientCleanup) > clientLinkCleanCycle {
 			p.clientInst.CloseIdleConnections()
-			spanEmitter.EventInfof("(HTTPClientAccessProvider::exchangeLoop) close idle connections")
+			spanEmitter.EventInfo("(HTTPClientAccessProvider::exchangeLoop) close idle connections")
 			lastIdleClientCleanup = time.Now()
 		}
 		spanEmitter.FinishSpan("success")

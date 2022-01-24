@@ -22,11 +22,11 @@ func queueAllocateServiceIdentsRequest(spanEmitter *qabalwrap.TraceEmitter, s *M
 	for _, ref := range req.ServiceIdents {
 		uniqIdent, err := uuid.Parse(ref.UniqueIdent)
 		if nil != err {
-			spanEmitter.EventErrorf("(queueAllocateServiceIdentsRequest) cannot parse unique identifier: %v", err)
+			spanEmitter.EventError("(queueAllocateServiceIdentsRequest) cannot parse unique identifier: %v", err)
 			continue
 		}
 		if ref.TextIdent == "" {
-			spanEmitter.EventErrorf("(queueAllocateServiceIdentsRequest) text identifier must not empty: [%s]", ref.TextIdent)
+			spanEmitter.EventError("(queueAllocateServiceIdentsRequest) text identifier must not empty: [%s]", ref.TextIdent)
 			continue
 		}
 		srvRef := &ServiceReference{
@@ -35,7 +35,7 @@ func queueAllocateServiceIdentsRequest(spanEmitter *qabalwrap.TraceEmitter, s *M
 			TextIdent:   ref.TextIdent,
 		}
 		if err := srvRef.PublicKey.UnmarshalBinary(ref.PublicKey); nil != err {
-			spanEmitter.EventErrorf("(queueAllocateServiceIdentsRequest) cannot load public key [%s/%s]: %v", ref.UniqueIdent, ref.TextIdent, err)
+			spanEmitter.EventError("(queueAllocateServiceIdentsRequest) cannot load public key [%s/%s]: %v", ref.UniqueIdent, ref.TextIdent, err)
 			continue
 		}
 		unassignedSrvRefs = append(unassignedSrvRefs, srvRef)
@@ -49,7 +49,7 @@ func queueAllocateServiceIdentsRequest(spanEmitter *qabalwrap.TraceEmitter, s *M
 			ServiceRef:  srvRef,
 			SpanEmitter: spanEmitter,
 		}
-		spanEmitter.EventInfof("(queueAllocateServiceIdentsRequest) push request [%s/%s] into queue.",
+		spanEmitter.EventInfo("(queueAllocateServiceIdentsRequest) push request [%s/%s] into queue.",
 			srvRef.TextIdent, srvRef.UniqueIdent.String())
 	}
 	spanEmitter.FinishSpan("success")

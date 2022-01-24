@@ -92,7 +92,7 @@ func (p *baseRelayProvider) packMessages(
 	result := make([]byte, sha256.Size+4+24, sha256.Size+4+24+len(buf)+secretbox.Overhead)
 	var nonce [24]byte
 	if _, err = io.ReadFull(rand.Reader, nonce[:]); nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (commonRelayProviderBase::packMessages) cannot init nonce: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (commonRelayProviderBase::packMessages) cannot init nonce: %v", err)
 		return
 	}
 	copy(result[sha256.Size+4:], nonce[:])
@@ -116,11 +116,11 @@ func (p *baseRelayProvider) unpackMessages(spanEmitter *qabalwrap.TraceEmitter, 
 	var sizeBuf [4]byte
 	var n int
 	if n, err = io.ReadFull(b, chksum[:]); nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (commonRelayProviderBase::unpackMessages) not enough bytes for digest: %d, %v", n, err)
+		spanEmitter.FinishSpanLogError("failed: (commonRelayProviderBase::unpackMessages) not enough bytes for digest: %d, %v", n, err)
 		return
 	}
 	if n, err = io.ReadFull(b, sizeBuf[:]); nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (commonRelayProviderBase::unpackMessages) not enough bytes for size: %d, %v", n, err)
+		spanEmitter.FinishSpanLogError("failed: (commonRelayProviderBase::unpackMessages) not enough bytes for size: %d, %v", n, err)
 		return
 	}
 	sizeRaw := binary.LittleEndian.Uint32(sizeBuf[:])
@@ -135,7 +135,7 @@ func (p *baseRelayProvider) unpackMessages(spanEmitter *qabalwrap.TraceEmitter, 
 	totalBuf := make([]byte, 4+sizeReal)
 	binary.LittleEndian.PutUint32(totalBuf[0:], uint32(sizeReal))
 	if n, err = io.ReadFull(b, totalBuf[4:]); nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (commonRelayProviderBase::unpackMessages) not enough bytes for payload: %d, expect=%d, %v", n, sizeReal, err)
+		spanEmitter.FinishSpanLogError("failed: (commonRelayProviderBase::unpackMessages) not enough bytes for payload: %d, expect=%d, %v", n, sizeReal, err)
 		return
 	}
 	versum := sha256.Sum256(totalBuf)
@@ -169,7 +169,7 @@ func (p *baseRelayProvider) dispatchMessages(spanEmitter *qabalwrap.TraceEmitter
 		var remoteSpanEmitter *qabalwrap.TraceEmitter
 		var msg *qabalwrap.EnvelopedMessage
 		if remoteSpanEmitter, msg, payload, err = qabalwrap.UnpackBaggagedEnvelopedMessage(payload, p.diagnosisEmitter, "relay-base-dispatch-message"); nil != err {
-			spanEmitter.FinishSpanErrorf("failed: (commonRelayProviderBase::dispatchMessages) unpack into raw message failed: %v", err)
+			spanEmitter.FinishSpanLogError("failed: (commonRelayProviderBase::dispatchMessages) unpack into raw message failed: %v", err)
 			return
 		}
 		if msg != nil {

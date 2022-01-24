@@ -16,7 +16,7 @@ type knownServiceIdentsNotifyHandler struct {
 func newKnownServiceIdentsNotifyHandler(spanEmitter *qabalwrap.TraceEmitter, s *MessageSwitch) (h knownServiceIdentsNotifyHandler, err error) {
 	knownServiceIdentsMessage, knownServiceIdentsDigest, err := s.buildKnownServiceIdentsMessage(spanEmitter)
 	if nil != err {
-		spanEmitter.EventErrorf("(newKnownServiceIdentsNotifyHandler) cannot build known service identifiers message: %v", err)
+		spanEmitter.EventError("(newKnownServiceIdentsNotifyHandler) cannot build known service identifiers message: %v", err)
 		return
 	}
 	h = knownServiceIdentsNotifyHandler{
@@ -37,11 +37,11 @@ func (h *knownServiceIdentsNotifyHandler) handleAsPrimarySwitch(spanEmitter *qab
 	for _, svrIdent := range notice.knownServiceIdents.ServiceIdents {
 		conn := h.s.crossBar.getServiceConnectBySerial(int(svrIdent.SerialIdent))
 		if conn == nil {
-			spanEmitter.EventWarningf("(knownServiceIdentsNotifyHandler::handleAsPrimarySwitch) cannot reach service connect (serial-ident=%d)", svrIdent.SerialIdent)
+			spanEmitter.EventWarning("(knownServiceIdentsNotifyHandler::handleAsPrimarySwitch) cannot reach service connect (serial-ident=%d)", svrIdent.SerialIdent)
 			continue
 		}
 		if svrIdent.TextIdent != conn.TextIdent {
-			spanEmitter.EventWarningf("(knownServiceIdentsNotifyHandler::handleAsPrimarySwitch) text identifier not match (serial-ident=%d): remote=[%s], local=[%s]",
+			spanEmitter.EventWarning("(knownServiceIdentsNotifyHandler::handleAsPrimarySwitch) text identifier not match (serial-ident=%d): remote=[%s], local=[%s]",
 				svrIdent.SerialIdent, svrIdent.TextIdent, conn.TextIdent)
 			continue
 		}
@@ -63,13 +63,13 @@ func (h *knownServiceIdentsNotifyHandler) handleAsOrdinarySwitch(spanEmitter *qa
 	for _, svrIdent := range notice.knownServiceIdents.ServiceIdents {
 		ref, err := newServiceReferenceFromQBW1RPCServiceIdent(svrIdent)
 		if nil != err {
-			spanEmitter.EventErrorf("(knownServiceIdentsNotifyHandler::handleAsOrdinarySwitch) cannot generate service reference: %v",
+			spanEmitter.EventError("(knownServiceIdentsNotifyHandler::handleAsOrdinarySwitch) cannot generate service reference: %v",
 				err)
 			continue
 		}
 		conn := h.s.crossBar.getServiceConnectByServiceReference(spanEmitter, ref)
 		if conn == nil {
-			spanEmitter.EventWarningf("(knownServiceIdentsNotifyHandler::handleAsPrimarySwitch) cannot reach service connect (serial-ident=%d)", svrIdent.SerialIdent)
+			spanEmitter.EventWarning("(knownServiceIdentsNotifyHandler::handleAsPrimarySwitch) cannot reach service connect (serial-ident=%d)", svrIdent.SerialIdent)
 			continue
 		}
 		if switchSerialIdent := svrIdent.LinkHopSwitchSerialIdent; (switchSerialIdent == int32(localSwitchSerialIdent)) || (switchSerialIdent == 0) || (switchSerialIdent == qabalwrap.UnknownServiceIdent) {
@@ -83,7 +83,7 @@ func (h *knownServiceIdentsNotifyHandler) handleAsOrdinarySwitch(spanEmitter *qa
 func (h *knownServiceIdentsNotifyHandler) handle(notice *knownServiceIdentsNotify) {
 	spanEmitter := notice.spanEmitter.StartSpan("handle-known-service-ident-notify")
 	if notice.knownServiceIdents == nil {
-		spanEmitter.EventInfof("relay link lost: relay-index=%d", notice.relayIndex)
+		spanEmitter.EventInfo("relay link lost: relay-index=%d", notice.relayIndex)
 		h.s.crossBar.relayLinkLosted(spanEmitter, notice.relayIndex)
 	} else if h.s.primarySwitch {
 		h.handleAsPrimarySwitch(spanEmitter, notice)
@@ -92,7 +92,7 @@ func (h *knownServiceIdentsNotifyHandler) handle(notice *knownServiceIdentsNotif
 	}
 	knownServiceIdentsMessage, knownServiceIdentsDigest, err := h.s.buildKnownServiceIdentsMessage(spanEmitter)
 	if nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (knownServiceIdentsNotifyHandler::handle) cannot build known service identifiers message: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (knownServiceIdentsNotifyHandler::handle) cannot build known service identifiers message: %v", err)
 		return
 	}
 	if knownServiceIdentsDigest == h.messageDigest {
@@ -116,14 +116,14 @@ func (h *knownServiceIdentsNotifyHandler) checkChanges(spanEmitter *qabalwrap.Tr
 	spanEmitter = spanEmitter.StartSpan("known-service-ident-notify-check-change")
 	knownServiceIdentsMessage, knownServiceIdentsDigest, err := h.s.buildKnownServiceIdentsMessage(spanEmitter)
 	if nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (knownServiceIdentsNotifyHandler::checkChanges) cannot build known service identifiers message: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (knownServiceIdentsNotifyHandler::checkChanges) cannot build known service identifiers message: %v", err)
 		return
 	}
 	if knownServiceIdentsDigest == h.messageDigest {
 		spanEmitter.FinishSpan("success: (knownServiceIdentsNotifyHandler::checkChanges) no change.")
 		return
 	}
-	spanEmitter.EventInfof("(knownServiceIdentsNotifyHandler::checkChanges) changed.")
+	spanEmitter.EventInfo("(knownServiceIdentsNotifyHandler::checkChanges) changed.")
 	h.messageCache = knownServiceIdentsMessage
 	h.messageDigest = knownServiceIdentsDigest
 	h.s.nonblockingRelayPeerBroadcast(spanEmitter, h.messageCache)

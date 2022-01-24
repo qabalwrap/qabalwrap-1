@@ -32,13 +32,13 @@ func newHTTPServeAccessChannel(ctx context.Context, sharedSecretText string, mes
 func (p *serverAccessChannel) serveBinary(spanEmitter *qabalwrap.TraceEmitter, w http.ResponseWriter, r *http.Request) {
 	spanEmitter = spanEmitter.StartSpan("server-access-ch-bin")
 	if r.Method != http.MethodPost {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider::serveBinary) wrong http method (remote=%s): %v", r.RemoteAddr, r.Method)
+		spanEmitter.FinishSpanLogError("failed: (HTTPServeAccessProvider::serveBinary) wrong http method (remote=%s): %v", r.RemoteAddr, r.Method)
 		httpBadRequest(w, r)
 		return
 	}
 	collectTimeout := slowEmptyMessageCollectTimeout
 	if dispatchedMessageCount, err := p.dispatchMessages(spanEmitter, r.Body); nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider::serveBinary) having error on import payload (remote=%s): %v", r.RemoteAddr, err)
+		spanEmitter.FinishSpanLogError("failed: (HTTPServeAccessProvider::serveBinary) having error on import payload (remote=%s): %v", r.RemoteAddr, err)
 		httpBadRequest(w, r)
 		return
 	} else if dispatchedMessageCount > 0 {
@@ -47,7 +47,7 @@ func (p *serverAccessChannel) serveBinary(spanEmitter *qabalwrap.TraceEmitter, w
 	}
 	resultPayload, _, err := p.packMessages(r.Context(), spanEmitter, collectTimeout)
 	if nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider::serveBinary) having error on packaging payload (remote=%s): %v", r.RemoteAddr, err)
+		spanEmitter.FinishSpanLogError("failed: (HTTPServeAccessProvider::serveBinary) having error on packaging payload (remote=%s): %v", r.RemoteAddr, err)
 		http.Error(w, "500 internal error", http.StatusInternalServerError)
 		return
 	}
@@ -61,14 +61,14 @@ func (p *serverAccessChannel) serveBinary(spanEmitter *qabalwrap.TraceEmitter, w
 func (p *serverAccessChannel) serveText(spanEmitter *qabalwrap.TraceEmitter, w http.ResponseWriter, r *http.Request) {
 	spanEmitter = spanEmitter.StartSpan("server-access-ch-txt")
 	if r.Method != http.MethodPost {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider::serveText) wrong http method (remote=%s): %v", r.RemoteAddr, r.Method)
+		spanEmitter.FinishSpanLogError("failed: (HTTPServeAccessProvider::serveText) wrong http method (remote=%s): %v", r.RemoteAddr, r.Method)
 		httpBadRequest(w, r)
 		return
 	}
 	b64decoder := base64.NewDecoder(base64.StdEncoding, r.Body)
 	collectTimeout := slowEmptyMessageCollectTimeout
 	if dispatchedMessageCount, err := p.dispatchMessages(spanEmitter, b64decoder); nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider::serveText) having error on import payload (remote=%s): %v", r.RemoteAddr, err)
+		spanEmitter.FinishSpanLogError("failed: (HTTPServeAccessProvider::serveText) having error on import payload (remote=%s): %v", r.RemoteAddr, err)
 		httpBadRequest(w, r)
 		return
 	} else if dispatchedMessageCount > 0 {
@@ -77,7 +77,7 @@ func (p *serverAccessChannel) serveText(spanEmitter *qabalwrap.TraceEmitter, w h
 	}
 	resultBinaries, _, err := p.packMessages(r.Context(), spanEmitter, collectTimeout)
 	if nil != err {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider::serveText) having error on packaging payload (remote=%s): %v", r.RemoteAddr, err)
+		spanEmitter.FinishSpanLogError("failed: (HTTPServeAccessProvider::serveText) having error on packaging payload (remote=%s): %v", r.RemoteAddr, err)
 		http.Error(w, "500 internal error", http.StatusInternalServerError)
 		return
 	}
@@ -144,13 +144,13 @@ func (p *HTTPServeAccessProvider) ServeHTTP(w http.ResponseWriter, r *http.Reque
 	spanEmitter := p.diagnosisEmitter.StartTrace("http-serve-access-provider: %s", r.URL.Path)
 	reqPath := r.URL.Path
 	if len(reqPath) < 5 {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider) bad path: remote=%s, path=%v.", r.RemoteAddr, reqPath)
+		spanEmitter.FinishSpanLogError("failed: (HTTPServeAccessProvider) bad path: remote=%s, path=%v.", r.RemoteAddr, reqPath)
 		http.NotFound(w, r)
 		return
 	}
 	chIndex := int(reqPath[1] - '0')
 	if (chIndex < 0) || (chIndex > len(p.accessChannels)) {
-		spanEmitter.FinishSpanErrorf("failed: (HTTPServeAccessProvider) bad channel index: remote=%s, path=%v, ch-index=%d.", r.RemoteAddr, reqPath, chIndex)
+		spanEmitter.FinishSpanLogError("failed: (HTTPServeAccessProvider) bad channel index: remote=%s, path=%v, ch-index=%d.", r.RemoteAddr, reqPath, chIndex)
 		http.NotFound(w, r)
 		return
 	}

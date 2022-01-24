@@ -59,7 +59,7 @@ func (slot *httpContentFetchSlot) errorToPeer(spanEmitter *qabalwrap.TraceEmitte
 }
 
 func (slot *httpContentFetchSlot) runWebSocket(spanEmitter *qabalwrap.TraceEmitter, targetURL *url.URL, h http.Header) {
-	spanEmitter.EventErrorf("run-websocket not implement yet")
+	spanEmitter.EventError("run-websocket not implement yet")
 }
 
 func (slot *httpContentFetchSlot) runRegular(spanEmitter *qabalwrap.TraceEmitter, targetURL *url.URL, req *qbw1grpcgen.HTTPContentRequest) {
@@ -69,15 +69,15 @@ func (slot *httpContentFetchSlot) runRegular(spanEmitter *qabalwrap.TraceEmitter
 	if req.IsComplete {
 		if len(req.ContentBody) > 0 {
 			httpReq, err = http.NewRequestWithContext(slot.ctx, req.RequestMethod, targetURL.String(), bytes.NewReader(req.ContentBody))
-			spanEmitter.EventInfof("(httpContentFetchSlot::run) request method=%s, url=[%s] with content (len=%d)", req.RequestMethod, targetURL.String(), len(req.ContentBody))
+			spanEmitter.EventInfo("(httpContentFetchSlot::run) request method=%s, url=[%s] with content (len=%d)", req.RequestMethod, targetURL.String(), len(req.ContentBody))
 		} else {
 			httpReq, err = http.NewRequestWithContext(slot.ctx, req.RequestMethod, targetURL.String(), nil)
-			spanEmitter.EventInfof("(httpContentFetchSlot::run) request method=%s, url=[%s] without content", req.RequestMethod, targetURL.String())
+			spanEmitter.EventInfo("(httpContentFetchSlot::run) request method=%s, url=[%s] without content", req.RequestMethod, targetURL.String())
 		}
 	} else {
 		reqBodyReader, reqBodyWriter := io.Pipe()
 		httpReq, err = http.NewRequestWithContext(slot.ctx, req.RequestMethod, targetURL.String(), reqBodyReader)
-		spanEmitter.EventInfof("(httpContentFetchSlot::run) request method=%s, url=[%s] with large content", req.RequestMethod, targetURL.String())
+		spanEmitter.EventInfo("(httpContentFetchSlot::run) request method=%s, url=[%s] with large content", req.RequestMethod, targetURL.String())
 		go func() {
 			spanEmitter := spanEmitter.StartSpan("fetch-run-regular-request-pass")
 			if len(req.ContentBody) > 0 {
@@ -86,7 +86,7 @@ func (slot *httpContentFetchSlot) runRegular(spanEmitter *qabalwrap.TraceEmitter
 			for {
 				req1 := <-slot.reqCh
 				if req1 == nil {
-					spanEmitter.EventInfof("(httpContentFetchSlot::run) empty request-1")
+					spanEmitter.EventInfo("(httpContentFetchSlot::run) empty request-1")
 					break
 				}
 				if len(req1.ContentBody) > 0 {
@@ -94,7 +94,7 @@ func (slot *httpContentFetchSlot) runRegular(spanEmitter *qabalwrap.TraceEmitter
 					reqBodyWriter.Write(req1.ContentBody)
 				}
 				if req1.IsComplete {
-					spanEmitter.EventInfof("(httpContentFetchSlot::run) request complete")
+					spanEmitter.EventInfo("(httpContentFetchSlot::run) request complete")
 					break
 				}
 			}
@@ -105,7 +105,7 @@ func (slot *httpContentFetchSlot) runRegular(spanEmitter *qabalwrap.TraceEmitter
 	}
 	if nil != err {
 		slot.errorToPeer(spanEmitter, err)
-		spanEmitter.FinishSpanErrorLogf("failed: (httpContentFetchSlot::run) cannot construct request: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (httpContentFetchSlot::run) cannot construct request: %v", err)
 		return
 	}
 	slot.sendToPeer(
@@ -122,7 +122,7 @@ func (slot *httpContentFetchSlot) runRegular(spanEmitter *qabalwrap.TraceEmitter
 	httpReq.Header = req.GetHeadersHTTPHeader()
 	resp, err := httpDefaultClient.Do(httpReq)
 	if nil != err {
-		spanEmitter.FinishSpanErrorLogf("failed: (httpContentFetchSlot::run) cannot issue request: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (httpContentFetchSlot::run) cannot issue request: %v", err)
 		slot.errorToPeer(spanEmitter, err)
 		return
 	}
@@ -131,7 +131,7 @@ func (slot *httpContentFetchSlot) runRegular(spanEmitter *qabalwrap.TraceEmitter
 	respContentBuf, respCompleted, err := readBytesChunk(respContentFullBuf, resp.Body)
 	if nil != err {
 		slot.errorToPeer(spanEmitter, err)
-		spanEmitter.FinishSpanErrorLogf("failed: (httpContentFetchSlot::run) read fetched content failed: %v", err)
+		spanEmitter.FinishSpanLogError("failed: (httpContentFetchSlot::run) read fetched content failed: %v", err)
 		return
 	}
 	slot.sendToPeer(
@@ -147,7 +147,7 @@ func (slot *httpContentFetchSlot) runRegular(spanEmitter *qabalwrap.TraceEmitter
 	for !respCompleted {
 		forwardSpanEmitter := spanEmitter.StartSpan("fetch-run-regular-content-pass")
 		if respContentBuf, respCompleted, err = readBytesChunk(respContentFullBuf, resp.Body); nil != err {
-			forwardSpanEmitter.EventErrorf("(httpContentFetchSlot::run) failed on loading response: %v", err)
+			forwardSpanEmitter.EventError("(httpContentFetchSlot::run) failed on loading response: %v", err)
 			respCompleted = true
 		}
 		slot.sendToPeer(
