@@ -75,7 +75,7 @@ func (p *Provider) updateSubscribedHostTLSCert(waitGroup *sync.WaitGroup, spanEm
 	if err = subscriptionRec.certSubscriber.UpdateHostTLSCertificates(waitGroup, spanEmitter, tlsCerts); nil != err {
 		spanEmitter.FinishSpanLogError("failed: (updateSubscribedHostTLSCert) update certificate failed: %v", err)
 	} else {
-		spanEmitter.FinishSpanLogError("success: (updateSubscribedHostTLSCert) update certificate complete.")
+		spanEmitter.FinishSpan("success: (updateSubscribedHostTLSCert) update certificate complete.")
 	}
 	return
 }
