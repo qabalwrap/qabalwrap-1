@@ -127,12 +127,14 @@ func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEm
 	}
 	emitedHeader := false
 	for {
+		forwardSpanEmitter := spanEmitter.StartSpan("regular-forward-loop")
 		select {
 		case tracedResp := <-slot.respCh:
 			if (tracedResp == nil) || (tracedResp.contentResponse == nil) {
 				if !emitedHeader {
 					http.Error(w, "timeout", http.StatusBadGateway)
 				}
+				forwardSpanEmitter.FinishSpan("failed: cannot have response")
 				spanEmitter.FinishSpanLogError("failed: (serveRegular) cannot have request response.")
 				return
 			}
@@ -150,6 +152,7 @@ func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEm
 				w.Write(resp.ContentBody)
 			}
 			if resp.IsComplete {
+				forwardSpanEmitter.FinishSpan("success")
 				spanEmitter.FinishSpan("success: complete in multiple packet")
 				return
 			}
@@ -157,9 +160,11 @@ func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEm
 			if !emitedHeader {
 				http.Error(w, "interrupted", http.StatusBadGateway)
 			}
+			forwardSpanEmitter.FinishSpan("failed: interrupted")
 			spanEmitter.FinishSpan("failed: interrupted at response stage")
 			return
 		}
+		forwardSpanEmitter.FinishSpan("success")
 	}
 }
 
