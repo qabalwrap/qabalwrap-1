@@ -48,13 +48,26 @@ func (cr *readTraceRunner) Run(ctx context.Context, client gen.Qabalwrap1Diagnos
 		if traceType == qabalwrap.EmptyTrace {
 			log.Printf("INFO: trace heartbeat: emit-at=%d", traceRec.EmitAt)
 		} else {
-			log.Printf("INFO: trace record: emit-at=%d, trace-type=%d, trace-ident=%X, span-ident=%X(parent=%X) [%s]",
-				traceRec.EmitAt,
-				traceRec.TraceType,
-				traceRec.TraceIdent,
-				traceRec.SpanIdent,
-				traceRec.ParentSpanIdent,
-				traceRec.MessageText)
+			switch traceRec.TraceType {
+			case int32(qabalwrap.LinkedTrace):
+				log.Printf("INFO: trace link: emit-at=%d, trace-type=%d, trace-ident=%X, span-ident=%X(parent=%X):",
+					traceRec.EmitAt,
+					traceRec.TraceType,
+					traceRec.TraceIdent,
+					traceRec.SpanIdent,
+					traceRec.ParentSpanIdent)
+				for lnkIdx, lnkRef := range traceRec.LinkedSpans {
+					log.Printf("INFO: -- %03d - trace-ident=%X, span-ident=%X", lnkIdx, lnkRef.TraceIdent, lnkRef.SpanIdent)
+				}
+			default:
+				log.Printf("INFO: trace record: emit-at=%d, trace-type=%d, trace-ident=%X, span-ident=%X(parent=%X) [%s]",
+					traceRec.EmitAt,
+					traceRec.TraceType,
+					traceRec.TraceIdent,
+					traceRec.SpanIdent,
+					traceRec.ParentSpanIdent,
+					traceRec.MessageText)
+			}
 		}
 		traceRec, err = traceReader.Recv()
 	}
