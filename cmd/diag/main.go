@@ -10,12 +10,15 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	gen "github.com/qabalwrap/qabalwrap-1/gen/qbw1diagrpcgen"
+
+	runner_ping "github.com/qabalwrap/qabalwrap-1/cmd/diag/internal/ping"
+	runner_readtrace "github.com/qabalwrap/qabalwrap-1/cmd/diag/internal/readtrace"
 )
 
 func main() {
 	diagnosisServerAddr, chosenRunner, err := parseCommandParam(
-		&readTraceRunner{},
-		&pingRunner{})
+		&runner_readtrace.Runner{},
+		&runner_ping.Runner{})
 	if nil != err {
 		log.Fatalf("ERROR: parse command option failed: %v", err)
 	}
