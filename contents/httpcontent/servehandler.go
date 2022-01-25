@@ -137,6 +137,7 @@ func (hnd *HTTPContentServeHandler) ServeHTTP(w http.ResponseWriter, r *http.Req
 	}
 	defer hnd.releaseTransferSlot(traceEmitter, transferSlot)
 	transferSlot.serve(traceEmitter, w, r)
+	traceEmitter.FinishSpan("success")
 }
 
 func (hnd *HTTPContentServeHandler) processContentResponse(
