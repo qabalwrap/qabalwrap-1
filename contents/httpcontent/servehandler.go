@@ -122,7 +122,7 @@ func (hnd *HTTPContentServeHandler) isFetcherLinkAvailable(spanEmitter *qabalwra
 
 func (hnd *HTTPContentServeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	traceEmitter := hnd.diagnosisEmitter.StartTrace("http-content-serve [%s:%d] %s %s",
+	traceEmitter := hnd.diagnosisEmitter.StartTrace("http-content-serve: [%s:%d] %s %s",
 		hnd.fetcherIdent, hnd.fetcherSeriaIdent, r.Method, r.URL.String())
 	if !hnd.isFetcherLinkAvailable(traceEmitter) {
 		http.Error(w, "content link unavailable", http.StatusServiceUnavailable)
