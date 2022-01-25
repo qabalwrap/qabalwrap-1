@@ -20,6 +20,7 @@ func (d *DiagnosisSocketServer) ReadTrace(req *gen.ReadTraceRequest, stream gen.
 	registerTimestamp := d.registConnectedTraceReader(instIdent)
 	defer d.unregistConnectedTraceReader(instIdent)
 	traceCh := d.diagnosisEmitter.GetTraceReadChannel()
+	defer d.diagnosisEmitter.ReleaseTraceReadChannel()
 	tick := time.NewTicker(tickDuration)
 	defer tick.Stop()
 	lastRegisterVerify := time.Now()
