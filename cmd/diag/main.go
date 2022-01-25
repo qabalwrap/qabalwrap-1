@@ -11,6 +11,7 @@ import (
 
 	gen "github.com/qabalwrap/qabalwrap-1/gen/qbw1diagrpcgen"
 
+	runner_exporttrace "github.com/qabalwrap/qabalwrap-1/cmd/diag/internal/exporttrace"
 	runner_ping "github.com/qabalwrap/qabalwrap-1/cmd/diag/internal/ping"
 	runner_readtrace "github.com/qabalwrap/qabalwrap-1/cmd/diag/internal/readtrace"
 )
@@ -18,6 +19,7 @@ import (
 func main() {
 	diagnosisServerAddr, chosenRunner, err := parseCommandParam(
 		&runner_readtrace.Runner{},
+		&runner_exporttrace.Runner{},
 		&runner_ping.Runner{})
 	if nil != err {
 		log.Fatalf("ERROR: parse command option failed: %v", err)
