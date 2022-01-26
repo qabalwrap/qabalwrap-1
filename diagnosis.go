@@ -45,6 +45,20 @@ func newTraceRecord(traceEmitter *TraceEmitter, traceTypeIdent TraceType, messag
 	return
 }
 
+func newTraceSpanStartRecord(traceEmitter *TraceEmitter, traceTypeIdent TraceType, serviceName ServiceInstanceIdentifier, operationName, messageText string) (record *qbw1diagrpcgen.TraceRecord) {
+	record = &qbw1diagrpcgen.TraceRecord{
+		TraceIdent:      traceEmitter.TraceIdent,
+		SpanIdent:       traceEmitter.SpanIdent,
+		ParentSpanIdent: traceEmitter.ParentSpanIdent,
+		TraceType:       int32(traceTypeIdent),
+		EmitAt:          time.Now().UnixNano(),
+		MessageText:     messageText,
+		ServiceName:     string(serviceName),
+		OperationName:   operationName,
+	}
+	return
+}
+
 func newLinkedTraceRecordWithBaggagedMessages(traceEmitter *TraceEmitter, linkedMessages []*BaggagedMessage) (record *qbw1diagrpcgen.TraceRecord) {
 	linkedSpans := make([]*qbw1diagrpcgen.SpanIdent, 0, len(linkedMessages))
 	for _, bagMsg := range linkedMessages {
@@ -192,7 +206,36 @@ func (diag *DiagnosisEmitter) emitLinkedTraceRecordWithSpanIdents(
 	}
 }
 
-func (diag *DiagnosisEmitter) StartTrace(traceMessageFmt string, a ...interface{}) (traceEmitter *TraceEmitter) {
+func (diag *DiagnosisEmitter) emitTraceSpanStart(
+	traceEmitter *TraceEmitter,
+	traceTypeIdent TraceType,
+	serviceName ServiceInstanceIdentifier,
+	operationName,
+	messageFmt string,
+	a ...interface{}) {
+	if currentReaderCnt := atomic.LoadInt32(&diag.traceReaderCount); currentReaderCnt <= 0 {
+		return
+	}
+	var messageText string
+	if len(a) == 0 {
+		messageText = messageFmt
+	} else {
+		messageText = fmt.Sprintf(messageFmt, a...)
+	}
+	record := newTraceSpanStartRecord(traceEmitter, traceTypeIdent, serviceName, operationName, messageText)
+	select {
+	case diag.traceRecordQueue <- record:
+		return
+	default:
+		log.Printf("WARN: cannot queue trace message (TraceSpanStart): full. TraceID=%08X, SpanID=%08X, ParentSpanID=%08X, TraceType=%s, EmitAt=%d, Message=[%s/%s/%s]",
+			record.TraceIdent, record.SpanIdent, record.ParentSpanIdent, TraceType(record.TraceType).String(), record.EmitAt, serviceName, operationName, record.MessageText)
+	}
+}
+
+func (diag *DiagnosisEmitter) StartTraceWithMessage(
+	serviceName ServiceInstanceIdentifier,
+	operationName,
+	traceMessageFmt string, a ...interface{}) (traceEmitter *TraceEmitter) {
 	traceIdent := diag.AllocateSerial()
 	traceEmitter = &TraceEmitter{
 		diagnosisEmitter: diag,
@@ -200,7 +243,21 @@ func (diag *DiagnosisEmitter) StartTrace(traceMessageFmt string, a ...interface{
 		SpanIdent:        traceIdent,
 		ParentSpanIdent:  traceIdent,
 	}
-	diag.emitTraceRecordLogf(traceEmitter, TraceStart, traceMessageFmt, a...)
+	diag.emitTraceSpanStart(traceEmitter, TraceStart, serviceName, operationName, traceMessageFmt, a...)
+	return
+}
+
+func (diag *DiagnosisEmitter) StartTraceWithoutMessage(
+	serviceName ServiceInstanceIdentifier,
+	operationName string) (traceEmitter *TraceEmitter) {
+	traceIdent := diag.AllocateSerial()
+	traceEmitter = &TraceEmitter{
+		diagnosisEmitter: diag,
+		TraceIdent:       traceIdent,
+		SpanIdent:        traceIdent,
+		ParentSpanIdent:  traceIdent,
+	}
+	diag.emitTraceSpanStart(traceEmitter, TraceStart, serviceName, operationName, "")
 	return
 }
 

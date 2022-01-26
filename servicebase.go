@@ -7,11 +7,17 @@ import (
 
 // ServiceBase offer base implementation of services.
 // All services should embed this struct.
-type ServiceBase struct{}
+type ServiceBase struct {
+	ServiceInstanceIdent ServiceInstanceIdentifier
+}
 
 // Setup prepare provider for operation.
 // Should only invoke at maintenance thread in setup stage.
-func (s *ServiceBase) Setup(diag *DiagnosisEmitter, certProvider CertificateProvider) (err error) {
+func (s *ServiceBase) Setup(
+	serviceInstIdent ServiceInstanceIdentifier,
+	diag *DiagnosisEmitter,
+	certProvider CertificateProvider) (err error) {
+	s.ServiceInstanceIdent = serviceInstIdent
 	return
 }
 

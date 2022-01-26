@@ -189,7 +189,8 @@ func (p *HTTPClientAccessProvider) exchangeLoop(waitGroup *sync.WaitGroup) {
 	var currentSessionTimestamp int64
 	lastIdleClientCleanup := time.Now()
 	for {
-		spanEmitter := p.diagnosisEmitter.StartTrace("http-access-client-exchange-loop: %v, collect-timeout=%v", time.Now(), collectTimeout)
+		spanEmitter := p.diagnosisEmitter.StartTraceWithMessage(p.ServiceInstanceIdent,
+			"http-access-client-exchange-loop", "t=%v, collect-timeout=%v", time.Now(), collectTimeout)
 		var exportedMessageCount, dispatchedMessageCount int
 		var err error
 		switch p.exchangeMode {
@@ -255,8 +256,10 @@ func (p *HTTPClientAccessProvider) exchangeLoop(waitGroup *sync.WaitGroup) {
 // Setup prepare provider for operation.
 // Should only invoke at maintenance thread in setup stage.
 func (p *HTTPClientAccessProvider) Setup(
+	serviceInstIdent qabalwrap.ServiceInstanceIdentifier,
 	diagnosisEmitter *qabalwrap.DiagnosisEmitter,
 	certProvider qabalwrap.CertificateProvider) (err error) {
+	p.ServiceInstanceIdent = serviceInstIdent
 	p.diagnosisEmitter = diagnosisEmitter
 	return
 }

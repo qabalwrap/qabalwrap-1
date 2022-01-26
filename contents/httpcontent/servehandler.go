@@ -122,7 +122,7 @@ func (hnd *HTTPContentServeHandler) isFetcherLinkAvailable(spanEmitter *qabalwra
 
 func (hnd *HTTPContentServeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	traceEmitter := hnd.diagnosisEmitter.StartTrace("http-content-serve: [%s:%d] %s %s",
+	traceEmitter := hnd.diagnosisEmitter.StartTraceWithMessage(hnd.ServiceInstanceIdent, "http-content-serve", "fetcher=[ident:%s,serial:%d], http-method=%s, http-url=%s",
 		hnd.fetcherIdent, hnd.fetcherSeriaIdent, r.Method, r.URL.String())
 	if !hnd.isFetcherLinkAvailable(traceEmitter) {
 		http.Error(w, "content link unavailable", http.StatusServiceUnavailable)
@@ -165,7 +165,11 @@ func (hnd *HTTPContentServeHandler) processContentResponse(
 
 // Setup prepare provider for operation.
 // Should only invoke at maintenance thread in setup stage.
-func (hnd *HTTPContentServeHandler) Setup(diagnosisEmitter *qabalwrap.DiagnosisEmitter, certProvider qabalwrap.CertificateProvider) (err error) {
+func (hnd *HTTPContentServeHandler) Setup(
+	serviceInstIdent qabalwrap.ServiceInstanceIdentifier,
+	diagnosisEmitter *qabalwrap.DiagnosisEmitter,
+	certProvider qabalwrap.CertificateProvider) (err error) {
+	hnd.ServiceInstanceIdent = serviceInstIdent
 	hnd.diagnosisEmitter = diagnosisEmitter
 	return
 }
@@ -194,7 +198,7 @@ func (hnd *HTTPContentServeHandler) SetMessageSender(messageSender qabalwrap.Mes
 }
 
 func (hnd *HTTPContentServeHandler) Stop() {
-	traceEmitter := hnd.diagnosisEmitter.StartTrace("stop-http-content-serve")
+	traceEmitter := hnd.diagnosisEmitter.StartTraceWithoutMessage(hnd.ServiceInstanceIdent, "stop-http-content-serve")
 	defer traceEmitter.FinishTrace("success")
 	hnd.lckTransferSlots.Lock()
 	defer hnd.lckTransferSlots.Unlock()

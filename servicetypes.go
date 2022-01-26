@@ -4,6 +4,8 @@ import (
 	"strconv"
 )
 
+type ServiceInstanceIdentifier string
+
 type ServiceTypeIdentifier int
 
 const (

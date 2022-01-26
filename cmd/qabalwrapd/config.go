@@ -157,7 +157,7 @@ func (cfg *configuration) setupAccessProviderHTTPClientService(ctx context.Conte
 
 func (cfg *configuration) makeInstance() (ctx context.Context, cancel context.CancelFunc, msgSwitch *qbw1messageswitch.MessageSwitch, err error) {
 	diag := qabalwrap.NewDiagnosisEmitter(int8(cfg.DiagnosisSocket.SerialPrefix), cfg.DiagnosisSocket.TraceBuffer)
-	spanEmitter := diag.StartTrace("qabalwrapd-config-make-instance")
+	spanEmitter := diag.StartTraceWithoutMessage(qabalwrap.ServiceInstanceIdentifier("qabalwrapd-config"), "qabalwrapd-config-make-instance")
 	msgSwitchStateStore, err := qabalwrap.NewStateStore(cfg.StateFolder, qabalwrap.ServiceTypeTextMessageSwitch, cfg.MessageSwitch.TextIdent)
 	if nil != err {
 		spanEmitter.FinishSpanLogError("failed: cannot setup state store for message switch [%s]: %v", cfg.MessageSwitch.TextIdent, err)

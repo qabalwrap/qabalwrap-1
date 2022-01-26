@@ -52,6 +52,9 @@ func NewMessageSwitch(
 	primarySwitch bool) (s *MessageSwitch, err error) {
 	spanEmitter = spanEmitter.StartSpan("new-message-switch")
 	aux := &MessageSwitch{
+		ServiceBase: qabalwrap.ServiceBase{
+			ServiceInstanceIdent: qabalwrap.ServiceInstanceIdentifier(textIdent),
+		},
 		primarySwitch:                 primarySwitch,
 		stateStore:                    stateStore,
 		diagnosisEmitter:              diag,
@@ -361,7 +364,7 @@ func (s *MessageSwitch) emitHostCertificateRequests(spanEmitter *qabalwrap.Trace
 }
 
 func (s *MessageSwitch) maintenanceWorks(ctx context.Context, waitGroup *sync.WaitGroup) {
-	spanEmitter := s.diagnosisEmitter.StartTrace("switch-maintenance-work: init")
+	spanEmitter := s.diagnosisEmitter.StartTraceWithoutMessage(s.ServiceInstanceIdent, "switch-maintenance-work:init")
 	defer waitGroup.Done()
 	hndKnownServiceIdentsNotify, err := newKnownServiceIdentsNotifyHandler(spanEmitter, s)
 	if nil != err {
@@ -374,7 +377,7 @@ func (s *MessageSwitch) maintenanceWorks(ctx context.Context, waitGroup *sync.Wa
 	spanEmitter.FinishSpan("success")
 	running := true
 	for running {
-		spanEmitter = s.diagnosisEmitter.StartTrace("switch-maintenance-work: iteration %v", time.Now())
+		spanEmitter = s.diagnosisEmitter.StartTraceWithMessage(s.ServiceInstanceIdent, "switch-maintenance-work", "iteration %v", time.Now())
 		s.checkCrossBarServiceConnectChanged(spanEmitter)
 		select {
 		case notice := <-s.notifyPeerKnownServiceIdents:
@@ -408,7 +411,7 @@ func (s *MessageSwitch) maintenanceWorks(ctx context.Context, waitGroup *sync.Wa
 		}
 		spanEmitter.FinishSpan("success")
 	}
-	spanEmitter = s.diagnosisEmitter.StartTrace("switch-maintenance-work: (MessageSwitch::maintenanceWorks) leaving maintenance work loop.")
+	spanEmitter = s.diagnosisEmitter.StartTraceWithMessage(s.ServiceInstanceIdent, "switch-maintenance-work", "(MessageSwitch::maintenanceWorks) leaving maintenance work loop.")
 	s.checkCrossBarServiceConnectChanged(spanEmitter)
 	spanEmitter.FinishSpan("success: (MessageSwitch::maintenanceWorks) maintenance work loop stopped.")
 }
@@ -416,8 +419,10 @@ func (s *MessageSwitch) maintenanceWorks(ctx context.Context, waitGroup *sync.Wa
 // Setup prepare provider for operation.
 // Should only invoke at maintenance thread in setup stage.
 func (s *MessageSwitch) Setup(
+	serviceInstIdent qabalwrap.ServiceInstanceIdentifier,
 	diagnosisEmitter *qabalwrap.DiagnosisEmitter,
 	certProvider qabalwrap.CertificateProvider) (err error) {
+	s.ServiceInstanceIdent = serviceInstIdent
 	return
 }
 
@@ -448,7 +453,10 @@ func (s *MessageSwitch) AddServiceProvider(textIdent string, serviceProvider qab
 	if err = s.crossBar.attachServiceProvider(textIdent, serviceProvider); nil != err {
 		return
 	}
-	if err = serviceProvider.Setup(s.diagnosisEmitter, &s.tlsCertProvider); nil != err {
+	if err = serviceProvider.Setup(
+		qabalwrap.ServiceInstanceIdentifier(textIdent),
+		s.diagnosisEmitter,
+		&s.tlsCertProvider); nil != err {
 		return
 	}
 	s.localServices = append(s.localServices, serviceProvider)
@@ -457,7 +465,7 @@ func (s *MessageSwitch) AddServiceProvider(textIdent string, serviceProvider qab
 
 func (s *MessageSwitch) Start(ctx context.Context, waitGroup *sync.WaitGroup, spanEmitter *qabalwrap.TraceEmitter) (err error) {
 	if spanEmitter == nil {
-		spanEmitter = s.diagnosisEmitter.StartTrace("message-switch-start")
+		spanEmitter = s.diagnosisEmitter.StartTraceWithoutMessage(s.ServiceInstanceIdent, "message-switch-start")
 	} else {
 		spanEmitter = spanEmitter.StartSpan("message-switch-start")
 	}

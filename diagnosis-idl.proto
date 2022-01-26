@@ -36,6 +36,9 @@ message TraceRecord {
 	int64 emit_at = 5;
 	string message_text = 6;
 	repeated SpanIdent linked_spans = 7;
+	string service_name = 8;
+	string operation_name = 9;
+	bool is_success = 10;
 }
 
 // }}} REV-CONTENT 5e21bf02abab228cb9effad19f8e758b

@@ -60,8 +60,10 @@ func (d *DiagnosisSocketServer) unregistConnectedTraceReader(readerInstIdent str
 // Setup prepare provider for operation.
 // Should only invoke at maintenance thread in setup stage.
 func (d *DiagnosisSocketServer) Setup(
+	serviceInstIdent qabalwrap.ServiceInstanceIdentifier,
 	diagnosisEmitter *qabalwrap.DiagnosisEmitter,
 	certProvider qabalwrap.CertificateProvider) (err error) {
+	d.ServiceInstanceIdent = serviceInstIdent
 	d.diagnosisEmitter = diagnosisEmitter
 	return
 }

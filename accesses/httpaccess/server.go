@@ -141,7 +141,7 @@ func (p *HTTPServeAccessProvider) AddAccessChannel(ctx context.Context, channelI
 }
 
 func (p *HTTPServeAccessProvider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	spanEmitter := p.diagnosisEmitter.StartTrace("http-serve-access-provider: %s", r.URL.Path)
+	spanEmitter := p.diagnosisEmitter.StartTraceWithMessage(p.ServiceInstanceIdent, "http-serve-access-provider", "url-path=%s", r.URL.Path)
 	reqPath := r.URL.Path
 	if len(reqPath) < 5 {
 		spanEmitter.FinishSpanLogError("failed: (HTTPServeAccessProvider) bad path: remote=%s, path=%v.", r.RemoteAddr, reqPath)
@@ -168,8 +168,10 @@ func (p *HTTPServeAccessProvider) ServeHTTP(w http.ResponseWriter, r *http.Reque
 // Setup prepare provider for operation.
 // Should only invoke at maintenance thread in setup stage.
 func (p *HTTPServeAccessProvider) Setup(
+	serviceInstIdent qabalwrap.ServiceInstanceIdentifier,
 	diagnosisEmitter *qabalwrap.DiagnosisEmitter,
 	certProvider qabalwrap.CertificateProvider) (err error) {
+	p.ServiceInstanceIdent = serviceInstIdent
 	p.diagnosisEmitter = diagnosisEmitter
 	for _, c := range p.accessChannels {
 		c.diagnosisEmitter = diagnosisEmitter

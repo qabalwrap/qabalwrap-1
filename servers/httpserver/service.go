@@ -81,8 +81,12 @@ func (s *Service) httpServerListenAndServeTLS(waitGroup *sync.WaitGroup) {
 	s.serverRunning = false
 }
 
-func (s *Service) Setup(diagnosisEmitter *qabalwrap.DiagnosisEmitter, certProvider qabalwrap.CertificateProvider) (err error) {
-	spanEmitter := diagnosisEmitter.StartTrace("servers-http-start-setup")
+func (s *Service) Setup(
+	serviceInstIdent qabalwrap.ServiceInstanceIdentifier,
+	diagnosisEmitter *qabalwrap.DiagnosisEmitter,
+	certProvider qabalwrap.CertificateProvider) (err error) {
+	s.ServiceInstanceIdent = serviceInstIdent
+	spanEmitter := diagnosisEmitter.StartTraceWithoutMessage(s.ServiceInstanceIdent, "servers-http-start-setup")
 	defer spanEmitter.FinishSpan("success")
 	hostNames := make([]string, 0, len(s.hostHandlers))
 	for hostName := range s.hostHandlers {
