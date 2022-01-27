@@ -8,7 +8,7 @@ import (
 )
 
 func queueAllocateServiceIdentsRequest(spanEmitter *qabalwrap.TraceEmitter, s *MessageSwitch, m *qabalwrap.EnvelopedMessage) (err error) {
-	spanEmitter = spanEmitter.StartSpan("queue-allocate-service-idents-req")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "queue-allocate-service-idents-req")
 	if !s.primarySwitch {
 		spanEmitter.FinishSpan("failed: (queueAllocateServiceIdentsRequest) not primary switch: src=%d", m.SourceServiceIdent)
 		return ErrNotSupportedOperation
@@ -57,7 +57,7 @@ func queueAllocateServiceIdentsRequest(spanEmitter *qabalwrap.TraceEmitter, s *M
 }
 
 func handleAllocateServiceIdentsRequest(s *MessageSwitch, srvRefReq *serviceReferenceRequest) {
-	spanEmitter := srvRefReq.SpanEmitter.StartSpan("hnd-allocate-service-ident")
+	spanEmitter := srvRefReq.SpanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "hnd-allocate-service-ident")
 	if !s.primarySwitch {
 		spanEmitter.FinishSpan("failed: (handleAllocateServiceIdentsRequest) not primary switch: serviceRef=[%s/%s]",
 			srvRefReq.ServiceRef.TextIdent, srvRefReq.ServiceRef.UniqueIdent.String())

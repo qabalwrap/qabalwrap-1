@@ -9,7 +9,7 @@ import (
 )
 
 func queueRootCertificateAssignment(spanEmitter *qabalwrap.TraceEmitter, s *MessageSwitch, m *qabalwrap.EnvelopedMessage) (err error) {
-	spanEmitter = spanEmitter.StartSpan("queue-root-cert-assign")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "queue-root-cert-assign")
 	if s.primarySwitch {
 		spanEmitter.FinishSpanLogError("failed: (queueRootCertificateAssignment) primary switch does not accept root certificate assignment (src=%d, dest=%d)",
 			m.SourceServiceIdent, m.DestinationServiceIdent)
@@ -35,7 +35,7 @@ func queueRootCertificateAssignment(spanEmitter *qabalwrap.TraceEmitter, s *Mess
 }
 
 func handleRootCertificateAssignment(waitgroup *sync.WaitGroup, s *MessageSwitch, rootCertAssign *rootCertAssignment) (err error) {
-	spanEmitter := rootCertAssign.spanEmitter.StartSpan("handle-root-cert-assign: (handleRootCertificateAssignment) have root cert assignment.")
+	spanEmitter := rootCertAssign.spanEmitter.StartSpan(s.ServiceInstanceIdent, "handle-root-cert-assign", "(handleRootCertificateAssignment) have root cert assignment.")
 	if err = s.tlsCertProvider.UpdateRootCertificate(waitgroup, spanEmitter, rootCertAssign.certKeyPair); nil != err {
 		spanEmitter.FinishSpanLogError("failed: (handleRootCertificateAssignment) update root cert failed: %v", err)
 	} else {

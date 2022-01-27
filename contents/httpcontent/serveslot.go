@@ -18,10 +18,11 @@ type tracedHTTPContentResponse struct {
 }
 
 type httpContentTransferSlot struct {
-	ctx       context.Context
-	slotIndex int
-	slotIdent int32
-	respCh    chan *tracedHTTPContentResponse
+	ctx              context.Context
+	serviceInstIdent qabalwrap.ServiceInstanceIdentifier
+	slotIndex        int
+	slotIdent        int32
+	respCh           chan *tracedHTTPContentResponse
 
 	messageSender     qabalwrap.MessageSender
 	fetcherSeriaIdent int
@@ -29,12 +30,17 @@ type httpContentTransferSlot struct {
 	responseIdent int32
 }
 
-func newHTTPContentTransferSlot(ctx context.Context, slotIndex int, messageSender qabalwrap.MessageSender, fetcherSeriaIdent int) (s *httpContentTransferSlot) {
+func newHTTPContentTransferSlot(
+	ctx context.Context,
+	serviceInstIdent qabalwrap.ServiceInstanceIdentifier,
+	slotIndex int,
+	messageSender qabalwrap.MessageSender, fetcherSeriaIdent int) (s *httpContentTransferSlot) {
 	var buf [2]byte
 	io.ReadFull(rand.Reader, buf[:])
 	slotIdent := int32(((uint32(binary.LittleEndian.Uint16(buf[:])) << 16) & 0x7FFF0000) | 0x00080000 | (uint32(slotIndex) & 0xFFFF))
 	s = &httpContentTransferSlot{
 		ctx:               ctx,
+		serviceInstIdent:  serviceInstIdent,
 		slotIndex:         slotIndex,
 		slotIdent:         slotIdent,
 		respCh:            make(chan *tracedHTTPContentResponse, transferSlotResponseBufferSize),
@@ -49,7 +55,7 @@ func (slot *httpContentTransferSlot) sendToPeer(spanEmitter *qabalwrap.TraceEmit
 }
 
 func (slot *httpContentTransferSlot) serveWebSocket(spanEmitter *qabalwrap.TraceEmitter, w http.ResponseWriter, r *http.Request) {
-	spanEmitter = spanEmitter.StartSpan("serve-websocket")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(slot.serviceInstIdent, "serve-websocket")
 	req0 := qbw1grpcgen.HTTPContentRequest{
 		RequestIdent:  slot.slotIdent,
 		UrlPath:       r.URL.Path,
@@ -64,7 +70,7 @@ func (slot *httpContentTransferSlot) serveWebSocket(spanEmitter *qabalwrap.Trace
 }
 
 func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEmitter, w http.ResponseWriter, r *http.Request) {
-	spanEmitter = spanEmitter.StartSpan("serve-regular")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(slot.serviceInstIdent, "serve-regular")
 	reqContentFullBuf := make([]byte, 1024)
 	reqContentBuf, reqCompleted, err := readBytesChunk(reqContentFullBuf, r.Body)
 	if nil != err {
@@ -127,7 +133,7 @@ func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEm
 	}
 	emitedHeader := false
 	for {
-		forwardSpanEmitter := spanEmitter.StartSpan("regular-forward-loop")
+		forwardSpanEmitter := spanEmitter.StartSpanWithoutMessage(slot.serviceInstIdent, "regular-forward-loop")
 		select {
 		case tracedResp := <-slot.respCh:
 			if (tracedResp == nil) || (tracedResp.contentResponse == nil) {

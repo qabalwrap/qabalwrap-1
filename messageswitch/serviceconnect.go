@@ -13,6 +13,8 @@ import (
 type serviceConnect struct {
 	ServiceReference
 
+	serviceInstIdent qabalwrap.ServiceInstanceIdentifier
+
 	// linkHopCount is overall hop count from this node to given service.
 	// The value should modify in maintenance thread at setup stage, concurrent read in messaging threads.
 	lckLinkHopCount               sync.Mutex
@@ -97,9 +99,10 @@ func fillKnownServiceIdentsMessage(msg *qbw1grpcgen.KnownServiceIdents, refs []*
 	return
 }
 
-func newServiceConnect(serviceRef *ServiceReference) (c *serviceConnect) {
+func newServiceConnect(containerServiceInstIdent qabalwrap.ServiceInstanceIdentifier, serviceRef *ServiceReference) (c *serviceConnect) {
 	c = &serviceConnect{
 		ServiceReference:  *serviceRef,
+		serviceInstIdent:  containerServiceInstIdent + "-" + qabalwrap.ServiceInstanceIdentifier(serviceRef.TextIdent) + "-srvconn",
 		linkHopCountValue: maxLinkHopCount,
 	}
 	return
@@ -133,7 +136,7 @@ func (c *serviceConnect) setServiceProvider(serviceProvider qabalwrap.ServicePro
 // setRelayProviders connect given relayProviders with service.
 // Should only invoke at setup stage or before service ident assignment.
 func (c *serviceConnect) setRelayProviders(spanEmitter *qabalwrap.TraceEmitter, relayProviders []qabalwrap.RelayProvider) {
-	spanEmitter = spanEmitter.StartSpan("service-connect-set-relay-provider")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(c.serviceInstIdent, "service-connect-set-relay-provider")
 	if c == nil {
 		spanEmitter.FinishSpan("success: empty service connect")
 		return
@@ -151,7 +154,7 @@ func (c *serviceConnect) setRelayProviders(spanEmitter *qabalwrap.TraceEmitter, 
 }
 
 func (c *serviceConnect) setMessageSender(spanEmitter *qabalwrap.TraceEmitter, s *MessageSwitch) {
-	spanEmitter = spanEmitter.StartSpan("service-connect-set-message-sender")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(c.serviceInstIdent, "service-connect-set-message-sender")
 	if c == nil {
 		spanEmitter.FinishSpan("success: empty service connect")
 		return
@@ -208,7 +211,7 @@ func (c *serviceConnect) relayProvidersInEmitOrder() (relayProviders []qabalwrap
 }
 
 func (c *serviceConnect) emitMessage(spanEmitter *qabalwrap.TraceEmitter, envelopedMessage *qabalwrap.EnvelopedMessage) (err error) {
-	spanEmitter = spanEmitter.StartSpan("service-connect-emit-message: %s", c.TextIdent)
+	spanEmitter = spanEmitter.StartSpan(c.serviceInstIdent, "service-connect-emit-message", "dst=%d", envelopedMessage.DestinationServiceIdent)
 	relayProviders := c.relayProvidersInEmitOrder()
 	if len(relayProviders) == 0 {
 		err = ErrRelayLinksUnreachable(c.SerialIdent)

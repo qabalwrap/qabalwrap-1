@@ -6,7 +6,7 @@ import (
 )
 
 func queueHostCertificateRequest(spanEmitter *qabalwrap.TraceEmitter, s *MessageSwitch, m *qabalwrap.EnvelopedMessage) (err error) {
-	spanEmitter = spanEmitter.StartSpan("queue-host-cert-req")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "queue-host-cert-req")
 	if !s.primarySwitch {
 		spanEmitter.FinishSpanLogError("failed: (queueHostCertificateRequest) non-primary switch does not accept certificate request (src=%d, dest=%d)",
 			m.SourceServiceIdent, m.DestinationServiceIdent)
@@ -29,7 +29,7 @@ func queueHostCertificateRequest(spanEmitter *qabalwrap.TraceEmitter, s *Message
 }
 
 func handleHostCertificateRequest(s *MessageSwitch, req *hostCertRequest) (err error) {
-	spanEmitter := req.spanEmitter.StartSpan("handle-host-cert-req")
+	spanEmitter := req.spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "handle-host-cert-req")
 	resp, err := s.tlsCertProvider.PrepareQBw1HostCertificateAssignment(spanEmitter, req.hostName)
 	if nil != err {
 		spanEmitter.FinishSpanLogError("failed: (handleHostCertificateRequest) request certificate for [%s] failed: %v", req.hostName, err)

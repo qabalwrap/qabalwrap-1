@@ -30,7 +30,7 @@ func newHTTPServeAccessChannel(ctx context.Context, sharedSecretText string, mes
 }
 
 func (p *serverAccessChannel) serveBinary(spanEmitter *qabalwrap.TraceEmitter, w http.ResponseWriter, r *http.Request) {
-	spanEmitter = spanEmitter.StartSpan("server-access-ch-bin")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.serviceInstIdent, "server-access-ch-bin")
 	if r.Method != http.MethodPost {
 		spanEmitter.FinishSpanLogError("failed: (HTTPServeAccessProvider::serveBinary) wrong http method (remote=%s): %v", r.RemoteAddr, r.Method)
 		httpBadRequest(w, r)
@@ -59,7 +59,7 @@ func (p *serverAccessChannel) serveBinary(spanEmitter *qabalwrap.TraceEmitter, w
 }
 
 func (p *serverAccessChannel) serveText(spanEmitter *qabalwrap.TraceEmitter, w http.ResponseWriter, r *http.Request) {
-	spanEmitter = spanEmitter.StartSpan("server-access-ch-txt")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.serviceInstIdent, "server-access-ch-txt")
 	if r.Method != http.MethodPost {
 		spanEmitter.FinishSpanLogError("failed: (HTTPServeAccessProvider::serveText) wrong http method (remote=%s): %v", r.RemoteAddr, r.Method)
 		httpBadRequest(w, r)
@@ -96,7 +96,7 @@ func (p *serverAccessChannel) Start(ctx context.Context, waitGroup *sync.WaitGro
 
 func (p *serverAccessChannel) BlockingEmitMessage(spanEmitter *qabalwrap.TraceEmitter, rawMessage *qabalwrap.EnvelopedMessage) (err error) {
 	// log.Printf("TRACE: (HTTPServeAccessChannel::EmitMessage) blocking s=%d, d=%d, hop=%d", rawMessage.SourceServiceIdent, rawMessage.DestinationServiceIdent, rawMessage.RemainHops)
-	spanEmitter = spanEmitter.StartSpan("http-access-server-block-emit")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.serviceInstIdent, "http-access-server-block-emit")
 	err = p.blockingEmitMessage(p.ctx, spanEmitter, rawMessage)
 	spanEmitter.FinishSpanCheckErr(err)
 	return
@@ -104,7 +104,7 @@ func (p *serverAccessChannel) BlockingEmitMessage(spanEmitter *qabalwrap.TraceEm
 
 func (p *serverAccessChannel) NonblockingEmitMessage(spanEmitter *qabalwrap.TraceEmitter, rawMessage *qabalwrap.EnvelopedMessage) (emitSuccess bool) {
 	// log.Printf("TRACE: (HTTPServeAccessChannel::EmitMessage) non-blocking s=%d, d=%d, hop=%d", rawMessage.SourceServiceIdent, rawMessage.DestinationServiceIdent, rawMessage.RemainHops)
-	spanEmitter = spanEmitter.StartSpan("http-access-server-nonblock-emit")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.serviceInstIdent, "http-access-server-nonblock-emit")
 	emitSuccess = p.nonblockingEmitMessage(p.ctx, spanEmitter, rawMessage)
 	spanEmitter.FinishSpanCheckBool(emitSuccess)
 	return
@@ -141,7 +141,7 @@ func (p *HTTPServeAccessProvider) AddAccessChannel(ctx context.Context, channelI
 }
 
 func (p *HTTPServeAccessProvider) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	spanEmitter := p.diagnosisEmitter.StartTraceWithMessage(p.ServiceInstanceIdent, "http-serve-access-provider", "url-path=%s", r.URL.Path)
+	spanEmitter := p.diagnosisEmitter.StartTrace(p.ServiceInstanceIdent, "http-serve-access-provider", "url-path=%s", r.URL.Path)
 	reqPath := r.URL.Path
 	if len(reqPath) < 5 {
 		spanEmitter.FinishSpanLogError("failed: (HTTPServeAccessProvider) bad path: remote=%s, path=%v.", r.RemoteAddr, reqPath)
@@ -174,6 +174,7 @@ func (p *HTTPServeAccessProvider) Setup(
 	p.ServiceInstanceIdent = serviceInstIdent
 	p.diagnosisEmitter = diagnosisEmitter
 	for _, c := range p.accessChannels {
+		c.baseRelayProvider.serviceInstIdent = serviceInstIdent + "-baserelay-s"
 		c.diagnosisEmitter = diagnosisEmitter
 	}
 	return

@@ -81,7 +81,7 @@ func (h *knownServiceIdentsNotifyHandler) handleAsOrdinarySwitch(spanEmitter *qa
 }
 
 func (h *knownServiceIdentsNotifyHandler) handle(notice *knownServiceIdentsNotify) {
-	spanEmitter := notice.spanEmitter.StartSpan("handle-known-service-ident-notify")
+	spanEmitter := notice.spanEmitter.StartSpanWithoutMessage(h.s.ServiceInstanceIdent, "handle-known-service-ident-notify")
 	if notice.knownServiceIdents == nil {
 		spanEmitter.EventInfo("relay link lost: relay-index=%d", notice.relayIndex)
 		h.s.crossBar.relayLinkLosted(spanEmitter, notice.relayIndex)
@@ -107,13 +107,13 @@ func (h *knownServiceIdentsNotifyHandler) handle(notice *knownServiceIdentsNotif
 }
 
 func (h *knownServiceIdentsNotifyHandler) emitCachedKnownServiceIdents(spanEmitter *qabalwrap.TraceEmitter, relayIndex int) {
-	spanEmitter = spanEmitter.StartSpan("emit-cache-for-known-service-ident-notify")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(h.s.ServiceInstanceIdent, "emit-cache-for-known-service-ident-notify")
 	defer spanEmitter.FinishSpan("success")
 	h.s.nonblockingRelayPeerMessage(spanEmitter, relayIndex, h.messageCache)
 }
 
 func (h *knownServiceIdentsNotifyHandler) checkChanges(spanEmitter *qabalwrap.TraceEmitter) {
-	spanEmitter = spanEmitter.StartSpan("known-service-ident-notify-check-change")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(h.s.ServiceInstanceIdent, "known-service-ident-notify-check-change")
 	knownServiceIdentsMessage, knownServiceIdentsDigest, err := h.s.buildKnownServiceIdentsMessage(spanEmitter)
 	if nil != err {
 		spanEmitter.FinishSpanLogError("failed: (knownServiceIdentsNotifyHandler::checkChanges) cannot build known service identifiers message: %v", err)

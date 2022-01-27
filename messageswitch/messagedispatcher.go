@@ -21,9 +21,10 @@ const maxAcceptableMessageCountFreeze = time.Minute * 5
 const maxAcceptableHopCount = 7
 
 type messageDispatcher struct {
-	relayIndex    int
-	relayInst     qabalwrap.RelayProvider
-	messageSwitch *MessageSwitch
+	relayIndex       int
+	relayInst        qabalwrap.RelayProvider
+	messageSwitch    *MessageSwitch
+	serviceInstIdent qabalwrap.ServiceInstanceIdentifier
 
 	messageCount uint32
 
@@ -43,6 +44,7 @@ func newMessageDispatcher(
 	return &messageDispatcher{
 		relayIndex:               relayIndex,
 		relayInst:                relayInst,
+		serviceInstIdent:         messageSwitch.ServiceInstanceIdent + "-" + relayInst.GetServiceInstanceIdentifier() + "-msgdispatcher",
 		messageSwitch:            messageSwitch,
 		lastEmitPing:             time.Now(),
 		lastSuccessPing:          time.Now(),
@@ -76,7 +78,7 @@ func (d *messageDispatcher) checkLinkTrafficStatus(spanEmitter *qabalwrap.TraceE
 }
 
 func (d *messageDispatcher) emitHeartbeatPing(spanEmitter *qabalwrap.TraceEmitter) {
-	spanEmitter = spanEmitter.StartSpan("emit-heartbeat-ping")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(d.serviceInstIdent, "emit-heartbeat-ping")
 	aux := qbw1grpcgen.HeartbeatPingPong{
 		CreateTimestamp: time.Now().UnixNano(),
 	}
@@ -97,7 +99,7 @@ func (d *messageDispatcher) emitHeartbeatPing(spanEmitter *qabalwrap.TraceEmitte
 }
 
 func (d *messageDispatcher) processPeerKnownServiceIdents(spanEmitter *qabalwrap.TraceEmitter, m *qabalwrap.EnvelopedMessage) {
-	spanEmitter = spanEmitter.StartSpan("peer-known-service-ident-req")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(d.serviceInstIdent, "peer-known-service-ident-req")
 	var d0 md5digest.MD5Digest
 	m.Digest(&d0)
 	if d.lastKnownServiceIdentsDigest == d0 {
@@ -120,7 +122,7 @@ func (d *messageDispatcher) processPeerKnownServiceIdents(spanEmitter *qabalwrap
 }
 
 func (d *messageDispatcher) processPeerPing(spanEmitter *qabalwrap.TraceEmitter, m *qabalwrap.EnvelopedMessage) {
-	spanEmitter = spanEmitter.StartSpan("peer-ping-req")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(d.serviceInstIdent, "peer-ping-req")
 	var hbPing qbw1grpcgen.HeartbeatPingPong
 	if err := m.Unmarshal(&hbPing); nil != err {
 		spanEmitter.FinishSpanLogError("failed: (messageDispatcher::processPeerPing) cannot unwrap ping: %v", err)
@@ -146,7 +148,7 @@ func (d *messageDispatcher) processPeerPing(spanEmitter *qabalwrap.TraceEmitter,
 }
 
 func (d *messageDispatcher) processPeerPong(spanEmitter *qabalwrap.TraceEmitter, m *qabalwrap.EnvelopedMessage) {
-	spanEmitter = spanEmitter.StartSpan("peer-pong-process")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(d.serviceInstIdent, "peer-pong-process")
 	var hbPong qbw1grpcgen.HeartbeatPingPong
 	if err := m.Unmarshal(&hbPong); nil != err {
 		spanEmitter.FinishSpanLogError("failed: (messageDispatcher::processPeerPong) cannot unwrap pong: %v", err)
@@ -157,7 +159,7 @@ func (d *messageDispatcher) processPeerPong(spanEmitter *qabalwrap.TraceEmitter,
 }
 
 func (d *messageDispatcher) processPeerAllocateServiceIdentsRequest(spanEmitter *qabalwrap.TraceEmitter, m *qabalwrap.EnvelopedMessage) {
-	spanEmitter = spanEmitter.StartSpan("peer-alloc-service-ident-req")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(d.serviceInstIdent, "peer-alloc-service-ident-req")
 	if !d.messageSwitch.localServiceRef.IsNormalSerialIdent() {
 		spanEmitter.FinishSpanLogError("failed: (messageDispatcher::processPeerAllocateServiceIdentsRequest) cannot forward. local serial is not valid: %d",
 			d.messageSwitch.localServiceRef.SerialIdent)

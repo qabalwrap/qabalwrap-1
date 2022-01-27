@@ -39,6 +39,9 @@ type MessageDispatcher interface {
 }
 
 type RelayProvider interface {
+	// GetServiceInstanceIdentifier return service identifier for this provider.
+	GetServiceInstanceIdentifier() (serviceInstIdent ServiceInstanceIdentifier)
+
 	// SetMessageDispatcher should update dispatcher for this instance if relay provider.
 	// This method is invoked on register this instance with message switch.
 	SetMessageDispatcher(spanEmitter *TraceEmitter, dispatcher MessageDispatcher)

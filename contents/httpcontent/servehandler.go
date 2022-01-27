@@ -19,9 +19,10 @@ type HTTPContentServeHandler struct {
 
 	messageSender qabalwrap.MessageSender
 
-	lckTransferSlots        sync.Mutex
-	freeTransferSlotIndexes []int
-	transferSlots           []*httpContentTransferSlot
+	transferSlotServiceInstIdent qabalwrap.ServiceInstanceIdentifier
+	lckTransferSlots             sync.Mutex
+	freeTransferSlotIndexes      []int
+	transferSlots                []*httpContentTransferSlot
 
 	diagnosisEmitter *qabalwrap.DiagnosisEmitter
 }
@@ -41,7 +42,7 @@ func NewHTTPContentServeHandler(fetcherIdent string, maxContentTransferSessions 
 }
 
 func (hnd *HTTPContentServeHandler) allocateTransferSlot(ctx context.Context, spanEmitter *qabalwrap.TraceEmitter) (transferSlot *httpContentTransferSlot) {
-	spanEmitter = spanEmitter.StartSpan("allocate-transfer-slot")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(hnd.ServiceInstanceIdent, "allocate-transfer-slot")
 	hnd.lckTransferSlots.Lock()
 	defer hnd.lckTransferSlots.Unlock()
 	l := len(hnd.freeTransferSlotIndexes)
@@ -51,14 +52,14 @@ func (hnd *HTTPContentServeHandler) allocateTransferSlot(ctx context.Context, sp
 	}
 	targetIndex := hnd.freeTransferSlotIndexes[l-1]
 	hnd.freeTransferSlotIndexes = hnd.freeTransferSlotIndexes[:(l - 1)]
-	transferSlot = newHTTPContentTransferSlot(ctx, targetIndex, hnd.messageSender, hnd.fetcherSeriaIdent)
+	transferSlot = newHTTPContentTransferSlot(ctx, hnd.transferSlotServiceInstIdent, targetIndex, hnd.messageSender, hnd.fetcherSeriaIdent)
 	hnd.transferSlots[targetIndex] = transferSlot
 	spanEmitter.FinishSpan("success: found: %d", targetIndex)
 	return
 }
 
 func (hnd *HTTPContentServeHandler) releaseTransferSlot(spanEmitter *qabalwrap.TraceEmitter, transferSlot *httpContentTransferSlot) {
-	spanEmitter = spanEmitter.StartSpan("release-transfer-slot")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(hnd.ServiceInstanceIdent, "release-transfer-slot")
 	hnd.lckTransferSlots.Lock()
 	defer hnd.lckTransferSlots.Unlock()
 	targetIndex := transferSlot.slotIndex
@@ -73,7 +74,7 @@ func (hnd *HTTPContentServeHandler) releaseTransferSlot(spanEmitter *qabalwrap.T
 }
 
 func (hnd *HTTPContentServeHandler) getTransferSlot(spanEmitter *qabalwrap.TraceEmitter, transferSlotIdent int32) (transferSlot *httpContentTransferSlot) {
-	spanEmitter = spanEmitter.StartSpan("get-transfer-slot: slot-ident=%d", transferSlotIdent)
+	spanEmitter = spanEmitter.StartSpan(hnd.ServiceInstanceIdent, "get-transfer-slot", "slot-ident=%d", transferSlotIdent)
 	hnd.lckTransferSlots.Lock()
 	defer hnd.lckTransferSlots.Unlock()
 	idx := int(transferSlotIdent & 0x0000FFFF)
@@ -94,7 +95,7 @@ func (hnd *HTTPContentServeHandler) getTransferSlot(spanEmitter *qabalwrap.Trace
 }
 
 func (hnd *HTTPContentServeHandler) isFetcherLinkAvailable(spanEmitter *qabalwrap.TraceEmitter) bool {
-	spanEmitter = spanEmitter.StartSpan("check-fetcher-link")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(hnd.ServiceInstanceIdent, "check-fetcher-link")
 	if hnd.messageSender == nil {
 		spanEmitter.FinishSpan("failed: empty message sender")
 		return false
@@ -122,7 +123,7 @@ func (hnd *HTTPContentServeHandler) isFetcherLinkAvailable(spanEmitter *qabalwra
 
 func (hnd *HTTPContentServeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	traceEmitter := hnd.diagnosisEmitter.StartTraceWithMessage(hnd.ServiceInstanceIdent, "http-content-serve", "fetcher=[ident:%s,serial:%d], http-method=%s, http-url=%s",
+	traceEmitter := hnd.diagnosisEmitter.StartTrace(hnd.ServiceInstanceIdent, "http-content-serve", "fetcher=[ident:%s,serial:%d], http-method=%s, http-url=%s",
 		hnd.fetcherIdent, hnd.fetcherSeriaIdent, r.Method, r.URL.String())
 	if !hnd.isFetcherLinkAvailable(traceEmitter) {
 		http.Error(w, "content link unavailable", http.StatusServiceUnavailable)
@@ -170,13 +171,14 @@ func (hnd *HTTPContentServeHandler) Setup(
 	diagnosisEmitter *qabalwrap.DiagnosisEmitter,
 	certProvider qabalwrap.CertificateProvider) (err error) {
 	hnd.ServiceInstanceIdent = serviceInstIdent
+	hnd.transferSlotServiceInstIdent = serviceInstIdent + "-slot-s"
 	hnd.diagnosisEmitter = diagnosisEmitter
 	return
 }
 
 // ReceiveMessage implement ServiceProvider interface.
 func (hnd *HTTPContentServeHandler) ReceiveMessage(spanEmitter *qabalwrap.TraceEmitter, envelopedMessage *qabalwrap.EnvelopedMessage) (err error) {
-	spanEmitter = spanEmitter.StartSpan("http-content-serve-recv-msg")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(hnd.ServiceInstanceIdent, "http-content-serve-recv-msg")
 	switch envelopedMessage.MessageContentType() {
 	case qabalwrap.MessageContentHTTPContentResponse:
 		var req qbw1grpcgen.HTTPContentResponse

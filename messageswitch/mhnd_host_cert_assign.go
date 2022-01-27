@@ -9,7 +9,7 @@ import (
 )
 
 func queueHostCertificateAssignment(spanEmitter *qabalwrap.TraceEmitter, s *MessageSwitch, m *qabalwrap.EnvelopedMessage) (err error) {
-	spanEmitter = spanEmitter.StartSpan("queue-host-cert-assign")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "queue-host-cert-assign")
 	if s.primarySwitch {
 		spanEmitter.FinishSpanLogError("failed: (queueHostCertificateAssignment) primary switch does not accept host certificate assignment (src=%d, dest=%d)",
 			m.SourceServiceIdent, m.DestinationServiceIdent)
@@ -36,7 +36,7 @@ func queueHostCertificateAssignment(spanEmitter *qabalwrap.TraceEmitter, s *Mess
 }
 
 func handleHostCertificateAssignment(waitgroup *sync.WaitGroup, s *MessageSwitch, r *hostCertAssignment) (err error) {
-	spanEmitter := r.spanEmitter.StartSpan("handle-host-cert-assign: (handleHostCertificateAssignment) [%s]", r.hostName)
+	spanEmitter := r.spanEmitter.StartSpan(s.ServiceInstanceIdent, "handle-host-cert-assign", "(handleHostCertificateAssignment) [%s]", r.hostName)
 	if err = s.tlsCertProvider.UpdateHostCertificate(waitgroup, spanEmitter, r.hostName, r.certKeyPair); nil != err {
 		spanEmitter.FinishSpanLogError("failed: (handleHostCertificateAssignment) update host cert failed [%s]: %v", r.hostName, err)
 	} else {

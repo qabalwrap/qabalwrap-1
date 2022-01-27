@@ -232,7 +232,7 @@ func (diag *DiagnosisEmitter) emitTraceSpanStart(
 	}
 }
 
-func (diag *DiagnosisEmitter) StartTraceWithMessage(
+func (diag *DiagnosisEmitter) StartTrace(
 	serviceName ServiceInstanceIdentifier,
 	operationName,
 	traceMessageFmt string, a ...interface{}) (traceEmitter *TraceEmitter) {
@@ -293,7 +293,10 @@ func (emitter *TraceEmitter) FinishTrace(traceMessageFmt string, a ...interface{
 	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, TraceFinish, traceMessageFmt, a...)
 }
 
-func (emitter *TraceEmitter) StartSpan(traceMessageFmt string, a ...interface{}) (traceEmitter *TraceEmitter) {
+func (emitter *TraceEmitter) StartSpan(
+	serviceName ServiceInstanceIdentifier,
+	operationName,
+	traceMessageFmt string, a ...interface{}) (traceEmitter *TraceEmitter) {
 	spanIdent := emitter.diagnosisEmitter.AllocateSerial()
 	traceEmitter = &TraceEmitter{
 		diagnosisEmitter: emitter.diagnosisEmitter,
@@ -301,7 +304,21 @@ func (emitter *TraceEmitter) StartSpan(traceMessageFmt string, a ...interface{})
 		SpanIdent:        spanIdent,
 		ParentSpanIdent:  emitter.SpanIdent,
 	}
-	emitter.diagnosisEmitter.emitTraceRecordLogf(traceEmitter, TraceSpanStart, traceMessageFmt, a...)
+	emitter.diagnosisEmitter.emitTraceSpanStart(traceEmitter, TraceStart, serviceName, operationName, traceMessageFmt, a...)
+	return
+}
+
+func (emitter *TraceEmitter) StartSpanWithoutMessage(
+	serviceName ServiceInstanceIdentifier,
+	operationName string) (traceEmitter *TraceEmitter) {
+	spanIdent := emitter.diagnosisEmitter.AllocateSerial()
+	traceEmitter = &TraceEmitter{
+		diagnosisEmitter: emitter.diagnosisEmitter,
+		TraceIdent:       emitter.TraceIdent,
+		SpanIdent:        spanIdent,
+		ParentSpanIdent:  emitter.SpanIdent,
+	}
+	emitter.diagnosisEmitter.emitTraceSpanStart(traceEmitter, TraceStart, serviceName, operationName, "")
 	return
 }
 

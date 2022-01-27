@@ -104,7 +104,7 @@ func NewHTTPClientAccessProvider(ctx context.Context, sharedSecretText string, m
 }
 
 func (p *HTTPClientAccessProvider) exchangeInBinary(spanEmitter *qabalwrap.TraceEmitter, collectTimeout time.Duration) (exportedMessageCount, dispatchedMessageCount int, err error) {
-	spanEmitter = spanEmitter.StartSpan("client-access-xc-bin")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.ServiceInstanceIdent, "client-access-xc-bin")
 	resultPayload, exportedMessageCount, err := p.packMessages(p.ctx, spanEmitter, collectTimeout)
 	if nil != err {
 		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInBinary) having error on packaging payload: %v", err)
@@ -142,7 +142,7 @@ func (p *HTTPClientAccessProvider) exchangeInBinary(spanEmitter *qabalwrap.Trace
 }
 
 func (p *HTTPClientAccessProvider) exchangeInText(spanEmitter *qabalwrap.TraceEmitter, collectTimeout time.Duration) (exportedMessageCount, dispatchedMessageCount int, err error) {
-	spanEmitter = spanEmitter.StartSpan("client-access-xc-txt")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.ServiceInstanceIdent, "client-access-xc-txt")
 	resultBinaries, exportedMessageCount, err := p.packMessages(p.ctx, spanEmitter, collectTimeout)
 	if nil != err {
 		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInText) having error on packaging payload: %v", err)
@@ -189,7 +189,7 @@ func (p *HTTPClientAccessProvider) exchangeLoop(waitGroup *sync.WaitGroup) {
 	var currentSessionTimestamp int64
 	lastIdleClientCleanup := time.Now()
 	for {
-		spanEmitter := p.diagnosisEmitter.StartTraceWithMessage(p.ServiceInstanceIdent,
+		spanEmitter := p.diagnosisEmitter.StartTrace(p.ServiceInstanceIdent,
 			"http-access-client-exchange-loop", "t=%v, collect-timeout=%v", time.Now(), collectTimeout)
 		var exportedMessageCount, dispatchedMessageCount int
 		var err error
@@ -261,6 +261,7 @@ func (p *HTTPClientAccessProvider) Setup(
 	certProvider qabalwrap.CertificateProvider) (err error) {
 	p.ServiceInstanceIdent = serviceInstIdent
 	p.diagnosisEmitter = diagnosisEmitter
+	p.baseRelayProvider.serviceInstIdent = serviceInstIdent + "-baserelay-c"
 	return
 }
 
@@ -279,14 +280,14 @@ func (p *HTTPClientAccessProvider) ReceiveMessage(spanEmitter *qabalwrap.TraceEm
 }
 
 func (p *HTTPClientAccessProvider) BlockingEmitMessage(spanEmitter *qabalwrap.TraceEmitter, rawMessage *qabalwrap.EnvelopedMessage) (err error) {
-	spanEmitter = spanEmitter.StartSpan("http-access-client-block-emit")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.ServiceInstanceIdent, "http-access-client-block-emit")
 	err = p.blockingEmitMessage(p.ctx, spanEmitter, rawMessage)
 	spanEmitter.FinishSpanCheckErr(err)
 	return
 }
 
 func (p *HTTPClientAccessProvider) NonblockingEmitMessage(spanEmitter *qabalwrap.TraceEmitter, rawMessage *qabalwrap.EnvelopedMessage) (emitSuccess bool) {
-	spanEmitter = spanEmitter.StartSpan("http-access-client-nonblock-emit")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.ServiceInstanceIdent, "http-access-client-nonblock-emit")
 	emitSuccess = p.nonblockingEmitMessage(p.ctx, spanEmitter, rawMessage)
 	spanEmitter.FinishSpanCheckBool(emitSuccess)
 	return

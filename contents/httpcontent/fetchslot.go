@@ -14,15 +14,16 @@ import (
 )
 
 type httpContentFetchSlot struct {
-	ctx             context.Context
-	cancel          context.CancelFunc
-	upstreamFetcher *HTTPContentFetcher
-	slotIndex       int
-	slotIdent       int32
-	reqCh           chan *qbw1grpcgen.HTTPContentRequest
-	msgSender       qabalwrap.MessageSender
-	peerSerialIdent int
-	requestIdent    int32
+	ctx              context.Context
+	cancel           context.CancelFunc
+	upstreamFetcher  *HTTPContentFetcher
+	serviceInstIdent qabalwrap.ServiceInstanceIdentifier
+	slotIndex        int
+	slotIdent        int32
+	reqCh            chan *qbw1grpcgen.HTTPContentRequest
+	msgSender        qabalwrap.MessageSender
+	peerSerialIdent  int
+	requestIdent     int32
 }
 
 func newHTTPContentFetchSlot(ctx context.Context, upstreamFetcher *HTTPContentFetcher, slotIndex int, msgSender qabalwrap.MessageSender, srcSerialIdent int, requestIdent int32) (s *httpContentFetchSlot) {
@@ -31,15 +32,16 @@ func newHTTPContentFetchSlot(ctx context.Context, upstreamFetcher *HTTPContentFe
 	slotIdent := int32(((uint32(binary.LittleEndian.Uint16(buf[:])) << 16) & 0x7FFF0000) | 0x00010000 | (uint32(slotIndex) & 0xFFFF))
 	ctx, cancel := context.WithCancel(ctx)
 	s = &httpContentFetchSlot{
-		ctx:             ctx,
-		cancel:          cancel,
-		upstreamFetcher: upstreamFetcher,
-		slotIndex:       slotIndex,
-		slotIdent:       slotIdent,
-		reqCh:           make(chan *qbw1grpcgen.HTTPContentRequest, transferSlotRequestBufferSize),
-		msgSender:       msgSender,
-		peerSerialIdent: srcSerialIdent,
-		requestIdent:    requestIdent,
+		ctx:              ctx,
+		cancel:           cancel,
+		upstreamFetcher:  upstreamFetcher,
+		serviceInstIdent: upstreamFetcher.fetchSlotServiceInstIdent,
+		slotIndex:        slotIndex,
+		slotIdent:        slotIdent,
+		reqCh:            make(chan *qbw1grpcgen.HTTPContentRequest, transferSlotRequestBufferSize),
+		msgSender:        msgSender,
+		peerSerialIdent:  srcSerialIdent,
+		requestIdent:     requestIdent,
 	}
 	return
 }
@@ -63,7 +65,7 @@ func (slot *httpContentFetchSlot) runWebSocket(spanEmitter *qabalwrap.TraceEmitt
 }
 
 func (slot *httpContentFetchSlot) runRegular(spanEmitter *qabalwrap.TraceEmitter, targetURL *url.URL, req *qbw1grpcgen.HTTPContentRequest) {
-	spanEmitter = spanEmitter.StartSpan("http-content-fetch-run-regular")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(slot.serviceInstIdent, "http-content-fetch-run-regular")
 	var httpReq *http.Request
 	var err error
 	if req.IsComplete {
@@ -79,7 +81,7 @@ func (slot *httpContentFetchSlot) runRegular(spanEmitter *qabalwrap.TraceEmitter
 		httpReq, err = http.NewRequestWithContext(slot.ctx, req.RequestMethod, targetURL.String(), reqBodyReader)
 		spanEmitter.EventInfo("(httpContentFetchSlot::run) request method=%s, url=[%s] with large content", req.RequestMethod, targetURL.String())
 		go func() {
-			spanEmitter := spanEmitter.StartSpan("fetch-run-regular-request-pass")
+			spanEmitter := spanEmitter.StartSpanWithoutMessage(slot.serviceInstIdent, "fetch-run-regular-request-pass")
 			if len(req.ContentBody) > 0 {
 				reqBodyWriter.Write(req.ContentBody)
 			}
@@ -145,7 +147,7 @@ func (slot *httpContentFetchSlot) runRegular(spanEmitter *qabalwrap.TraceEmitter
 			IsComplete:      respCompleted,
 		})
 	for !respCompleted {
-		forwardSpanEmitter := spanEmitter.StartSpan("fetch-run-regular-content-pass")
+		forwardSpanEmitter := spanEmitter.StartSpanWithoutMessage(slot.serviceInstIdent, "fetch-run-regular-content-pass")
 		if respContentBuf, respCompleted, err = readBytesChunk(respContentFullBuf, resp.Body); nil != err {
 			forwardSpanEmitter.EventError("(httpContentFetchSlot::run) failed on loading response: %v", err)
 			respCompleted = true
@@ -164,7 +166,7 @@ func (slot *httpContentFetchSlot) runRegular(spanEmitter *qabalwrap.TraceEmitter
 }
 
 func (slot *httpContentFetchSlot) run(spanEmitter *qabalwrap.TraceEmitter, req *qbw1grpcgen.HTTPContentRequest) {
-	spanEmitter = spanEmitter.StartSpan("http-content-fetch-slot-run")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(slot.serviceInstIdent, "http-content-fetch-slot-run")
 	defer slot.close()
 	targetURL := slot.upstreamFetcher.targetBaseURL
 	targetURL.Path = req.UrlPath

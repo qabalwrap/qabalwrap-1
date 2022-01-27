@@ -22,7 +22,12 @@ type baseRelayProvider struct {
 	messageBuffer     chan *qabalwrap.BaggagedMessage
 	messageDispatcher qabalwrap.MessageDispatcher
 
+	serviceInstIdent qabalwrap.ServiceInstanceIdentifier
 	diagnosisEmitter *qabalwrap.DiagnosisEmitter
+}
+
+func (p *baseRelayProvider) GetServiceInstanceIdentifier() (serviceInstIdent qabalwrap.ServiceInstanceIdentifier) {
+	return p.serviceInstIdent
 }
 
 func (p *baseRelayProvider) SetMessageDispatcher(spanEmitter *qabalwrap.TraceEmitter, dispatcher qabalwrap.MessageDispatcher) {
@@ -72,7 +77,7 @@ func (p *baseRelayProvider) packMessages(
 	ctx context.Context,
 	spanEmitter *qabalwrap.TraceEmitter,
 	collectTimeout time.Duration) (resultBinaries []byte, messageCount int, err error) {
-	spanEmitter = spanEmitter.StartSpan("relay-base-pack-messages")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.serviceInstIdent, "relay-base-pack-messages")
 	resultQueue, resultSize := p.collectMessages(ctx, collectTimeout)
 	if ctx.Err() != nil {
 		spanEmitter.FinishSpan("failed: context error")
@@ -111,7 +116,7 @@ func (p *baseRelayProvider) packMessages(
 }
 
 func (p *baseRelayProvider) unpackMessages(spanEmitter *qabalwrap.TraceEmitter, b io.Reader) (payload []byte, err error) {
-	spanEmitter = spanEmitter.StartSpan("relay-base-unpack-messages")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.serviceInstIdent, "relay-base-unpack-messages")
 	var chksum [sha256.Size]byte
 	var sizeBuf [4]byte
 	var n int
@@ -158,7 +163,7 @@ func (p *baseRelayProvider) unpackMessages(spanEmitter *qabalwrap.TraceEmitter, 
 }
 
 func (p *baseRelayProvider) dispatchMessages(spanEmitter *qabalwrap.TraceEmitter, b io.Reader) (dispatchedMessageCount int, err error) {
-	spanEmitter = spanEmitter.StartSpan("relay-base-dispatch-messages")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.serviceInstIdent, "relay-base-dispatch-messages")
 	payload, err := p.unpackMessages(spanEmitter, b)
 	if nil != err {
 		spanEmitter.FinishSpanFailedErr(err)

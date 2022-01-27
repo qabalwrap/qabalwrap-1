@@ -17,6 +17,8 @@ type subscribedHostTLSCerts struct {
 type Provider struct {
 	localCerts
 
+	serviceInstIdent qabalwrap.ServiceInstanceIdentifier
+
 	stateStore             *qabalwrap.StateStore
 	primaryTLSCertProvider bool
 
@@ -24,9 +26,11 @@ type Provider struct {
 }
 
 func (p *Provider) Init(
+	serviceInstIdent qabalwrap.ServiceInstanceIdentifier,
 	dnCountry, dnOrganization string,
 	stateStore *qabalwrap.StateStore,
 	primaryTLSCertProvider bool) (err error) {
+	p.serviceInstIdent = serviceInstIdent
 	p.stateStore = stateStore
 	p.primaryTLSCertProvider = primaryTLSCertProvider
 	ok, err := p.localCerts.load(p.stateStore)
@@ -45,7 +49,7 @@ func (p *Provider) Init(
 }
 
 func (p *Provider) updateSubscribedHostTLSCert(waitGroup *sync.WaitGroup, spanEmitter *qabalwrap.TraceEmitter, subscriptionRec *subscribedHostTLSCerts) (err error) {
-	spanEmitter = spanEmitter.StartSpan("update-subscribed-host-tls-cert")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.serviceInstIdent, "update-subscribed-host-tls-cert")
 	tlsCerts := make([]tls.Certificate, 0, len(subscriptionRec.hostNameSerials)+1)
 	cert, err := MakeSelfSignedHostTLSCertificate(defaultCountry, defaultOrganization, defaultTLSHostAddress)
 	if nil != err {
@@ -81,7 +85,7 @@ func (p *Provider) updateSubscribedHostTLSCert(waitGroup *sync.WaitGroup, spanEm
 }
 
 func (p *Provider) updateAllHostTLSCert(waitGroup *sync.WaitGroup, spanEmitter *qabalwrap.TraceEmitter) (err error) {
-	spanEmitter = spanEmitter.StartSpan("update-all-host-tls-cert")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.serviceInstIdent, "update-all-host-tls-cert")
 	for _, subscriptionRec := range p.hostTLSCertSubscriptions {
 		if err = p.updateSubscribedHostTLSCert(waitGroup, spanEmitter, subscriptionRec); nil != err {
 			spanEmitter.FinishSpan("failed: cannot update: %v", err)
@@ -98,7 +102,7 @@ func (p *Provider) updateAllHostTLSCert(waitGroup *sync.WaitGroup, spanEmitter *
 
 // PostSetup should be invoke at maintenance thread in setup stage.
 func (p *Provider) PostSetup(waitGroup *sync.WaitGroup, spanEmitter *qabalwrap.TraceEmitter) (err error) {
-	spanEmitter = spanEmitter.StartSpan("tls-provider-post-setup")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.serviceInstIdent, "tls-provider-post-setup")
 	if err = p.updateAllHostTLSCert(waitGroup, spanEmitter); nil != err {
 		spanEmitter.FinishSpanLogError("failed: (PostSetup) update all host TLS certificate failed: %v", err)
 	} else {
@@ -109,7 +113,7 @@ func (p *Provider) PostSetup(waitGroup *sync.WaitGroup, spanEmitter *qabalwrap.T
 
 // UpdateRootCertificate set given certificate as root certificate and update registered subscribers.
 func (p *Provider) UpdateRootCertificate(waitGroup *sync.WaitGroup, spanEmitter *qabalwrap.TraceEmitter, certKeyPair *CertificateKeyPair) (err error) {
-	spanEmitter = spanEmitter.StartSpan("tls-provider-update-root-cert")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.serviceInstIdent, "tls-provider-update-root-cert")
 	changed, err := p.updateRootCert(spanEmitter, certKeyPair)
 	if nil != err {
 		spanEmitter.FinishSpanLogError("failed: (UpdateRootCertificate) update root certificate failed: %v", err)
@@ -138,7 +142,7 @@ func (p *Provider) UpdateRootCertificate(waitGroup *sync.WaitGroup, spanEmitter 
 
 // UpdateHostCertificate associate given certificate with given host name and invoke TLS certificate update.
 func (p *Provider) UpdateHostCertificate(waitGroup *sync.WaitGroup, spanEmitter *qabalwrap.TraceEmitter, hostName string, certKeyPair *CertificateKeyPair) (err error) {
-	spanEmitter = spanEmitter.StartSpan("tls-provider-update-host-cert: %s", hostName)
+	spanEmitter = spanEmitter.StartSpan(p.serviceInstIdent, "tls-provider-update-host-cert", "hostname=%s", hostName)
 	p.localCerts.setHostKeyPair(hostName, certKeyPair)
 	for _, subscriptionRec := range p.hostTLSCertSubscriptions {
 		if _, ok := subscriptionRec.hostNameSerials[hostName]; !ok {
@@ -179,7 +183,7 @@ func (p *Provider) CollectSelfSignedHosts(spanEmitter *qabalwrap.TraceEmitter) (
 }
 
 func (p *Provider) PrepareQBw1HostCertificateAssignment(spanEmitter *qabalwrap.TraceEmitter, hostName string) (resp *qbw1grpcgen.HostCertificateAssignment, err error) {
-	spanEmitter = spanEmitter.StartSpan("tls-provider-prepare-host-cert-assignment: %s", hostName)
+	spanEmitter = spanEmitter.StartSpan(p.serviceInstIdent, "tls-provider-prepare-host-cert-assignment", "hostname=%s", hostName)
 	keyPair, err := p.localCerts.prepareHostKeyPair(hostName, p.primaryTLSCertProvider)
 	if nil != err {
 		spanEmitter.FinishSpanLogError("failed: (PrepareQBw1HostCertificateAssignment) prepare TLS certificate failed [host=%s]: %v", hostName, err)

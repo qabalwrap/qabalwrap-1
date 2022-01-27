@@ -14,6 +14,7 @@ import (
 const serviceRefsContentIdent = qabalwrap.ContentIdentServiceRefs
 
 type crossBar struct {
+	serviceInstIdent      qabalwrap.ServiceInstanceIdentifier
 	lckConnects           sync.Mutex
 	connectsBySerialIdent []*serviceConnect
 	connectsByTextIdent   map[string]*serviceConnect
@@ -32,7 +33,8 @@ func (b *crossBar) Init(
 	textIdent string,
 	messageSwitchServiceProvider qabalwrap.ServiceProvider,
 	primaryCrossBar bool) (err error) {
-	spanEmitter = spanEmitter.StartSpan("crossbar-init")
+	b.serviceInstIdent = qabalwrap.ServiceInstanceIdentifier(textIdent) + "-crossbar"
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(b.serviceInstIdent, "crossbar-init")
 	if _, err = b.load(stateStore); nil != err {
 		spanEmitter.FinishSpanLogError("failed: (crossBar::Init) load service references failed: %v", err)
 		return
@@ -90,7 +92,7 @@ func (b *crossBar) load(stateStore *qabalwrap.StateStore) (ok bool, err error) {
 		if l := connectsByTextIdent[svrRef.TextIdent]; l != nil {
 			log.Printf("WARN: message slot already existed: serial-ident=%d, text-ident=%s.", l.SerialIdent, l.TextIdent)
 		}
-		conn := newServiceConnect(svrRef)
+		conn := newServiceConnect(b.serviceInstIdent, svrRef)
 		connectsBySerialIdent[svrRef.SerialIdent] = conn
 		connectsByTextIdent[svrRef.TextIdent] = conn
 		connectsByUUID[svrRef.UniqueIdent] = conn
@@ -146,7 +148,7 @@ func (b *crossBar) attachServiceProvider(textIdent string, serviceProvider qabal
 		if serviceRef, err = generateServiceReference(textIdent); nil != err {
 			return
 		}
-		conn = newServiceConnect(serviceRef)
+		conn = newServiceConnect(b.serviceInstIdent, serviceRef)
 		b.unassignConnects = append(b.unassignConnects, conn)
 	}
 	conn.setServiceProvider(serviceProvider)
@@ -155,7 +157,7 @@ func (b *crossBar) attachServiceProvider(textIdent string, serviceProvider qabal
 }
 
 func (b *crossBar) postSetup(spanEmitter *qabalwrap.TraceEmitter) {
-	spanEmitter = spanEmitter.StartSpan("crossbar-post-setup")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(b.serviceInstIdent, "crossbar-post-setup")
 	defer spanEmitter.FinishSpan("success")
 	for connIndex, connInst := range b.connectsBySerialIdent {
 		if connInst == nil {
@@ -289,7 +291,7 @@ func (b *crossBar) getServiceConnectByServiceReference(
 		b.unassignConnects = removeServiceConnectAtIndex(b.unassignConnects, assignedIndex)
 		conn.SerialIdent = serviceRef.SerialIdent
 	} else {
-		conn = newServiceConnect(serviceRef)
+		conn = newServiceConnect(b.serviceInstIdent, serviceRef)
 	}
 	conn.setRelayProviders(spanEmitter, b.relayProviders)
 	b.connectsBySerialIdent[conn.SerialIdent] = conn
@@ -318,7 +320,7 @@ func (b *crossBar) setServiceZeroSerialIdent(serviceSerialIdent int) {
 // assignServiceSerialIdents set serial to unassign service connects.
 // May invoke on setup and operating stage.
 func (b *crossBar) assignServiceSerialIdents(spanEmitter *qabalwrap.TraceEmitter) {
-	spanEmitter = spanEmitter.StartSpan("assign-service-serial-idents")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(b.serviceInstIdent, "assign-service-serial-idents")
 	defer spanEmitter.FinishSpan("success")
 	b.lckConnects.Lock()
 	defer b.lckConnects.Unlock()
@@ -343,7 +345,7 @@ func (b *crossBar) assignServiceSerialIdents(spanEmitter *qabalwrap.TraceEmitter
 // Must only invoke on operating stage.
 func (b *crossBar) addUnassignedServiceConnectByServiceReference(
 	spanEmitter *qabalwrap.TraceEmitter, serviceRef *ServiceReference) (conn *serviceConnect) {
-	spanEmitter = spanEmitter.StartSpan("add-unassigned-service-connect-by-service-ref")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(b.serviceInstIdent, "add-unassigned-service-connect-by-service-ref")
 	if (serviceRef.SerialIdent != qabalwrap.UnknownServiceIdent) || serviceRef.IsNormalSerialIdent() {
 		spanEmitter.EventWarning("(addUnassignedServiceConnectByServiceReference) attempt to allocate service reference with assigned service ident: %d (text=%s, unique=%s)", serviceRef.SerialIdent, serviceRef.TextIdent, serviceRef.UniqueIdent.String())
 		b.lckConnects.Lock()
@@ -362,7 +364,7 @@ func (b *crossBar) addUnassignedServiceConnectByServiceReference(
 		spanEmitter.FinishSpan("success: existed UUID ident: %s", serviceRef.UniqueIdent.String())
 		return
 	}
-	conn = newServiceConnect(serviceRef)
+	conn = newServiceConnect(b.serviceInstIdent, serviceRef)
 	b.lckConnects.Lock()
 	defer b.lckConnects.Unlock()
 	b.unassignConnects = append(b.unassignConnects, conn)

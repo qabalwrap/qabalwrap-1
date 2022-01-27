@@ -22,9 +22,10 @@ type HTTPContentFetcher struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	lckFetchSlots        sync.Mutex
-	freeFetchSlotIndexes []int
-	fetchSlots           []*httpContentFetchSlot
+	fetchSlotServiceInstIdent qabalwrap.ServiceInstanceIdentifier
+	lckFetchSlots             sync.Mutex
+	freeFetchSlotIndexes      []int
+	fetchSlots                []*httpContentFetchSlot
 }
 
 func NewHTTPContentFetcher(targetBaseURL *url.URL, httpHostOverride string, maxContentFetchSessions int) (f *HTTPContentFetcher) {
@@ -46,7 +47,7 @@ func NewHTTPContentFetcher(targetBaseURL *url.URL, httpHostOverride string, maxC
 }
 
 func (hnd *HTTPContentFetcher) allocateFetchSlot(ctx context.Context, spanEmitter *qabalwrap.TraceEmitter, srcSerialIdent int, requestIdent int32) (fetchSlot *httpContentFetchSlot) {
-	spanEmitter = spanEmitter.StartSpan("http-content-fetch-alloc-slot: src=%d, req=%d", srcSerialIdent, requestIdent)
+	spanEmitter = spanEmitter.StartSpan(hnd.ServiceInstanceIdent, "http-content-fetch-alloc-slot", "src=%d, req=%d", srcSerialIdent, requestIdent)
 	hnd.lckFetchSlots.Lock()
 	defer hnd.lckFetchSlots.Unlock()
 	l := len(hnd.freeFetchSlotIndexes)
@@ -76,7 +77,7 @@ func (hnd *HTTPContentFetcher) releaseFetchSlot(fetchSlot *httpContentFetchSlot)
 }
 
 func (hnd *HTTPContentFetcher) getFetchSlot(spanEmitter *qabalwrap.TraceEmitter, fetchSlotIdent int32) (fetchSlot *httpContentFetchSlot) {
-	spanEmitter = spanEmitter.StartSpan("get-transfer-slot: slot-ident=%d", fetchSlotIdent)
+	spanEmitter = spanEmitter.StartSpan(hnd.ServiceInstanceIdent, "get-transfer-slot", "slot-ident=%d", fetchSlotIdent)
 	hnd.lckFetchSlots.Lock()
 	defer hnd.lckFetchSlots.Unlock()
 	idx := int(fetchSlotIdent & 0x0000FFFF)
@@ -98,8 +99,19 @@ func (hnd *HTTPContentFetcher) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	// TODO: impl
 }
 
+// Setup prepare provider for operation.
+// Should only invoke at maintenance thread in setup stage.
+func (hnd *HTTPContentFetcher) Setup(
+	serviceInstIdent qabalwrap.ServiceInstanceIdentifier,
+	diagnosisEmitter *qabalwrap.DiagnosisEmitter,
+	certProvider qabalwrap.CertificateProvider) (err error) {
+	hnd.ServiceInstanceIdent = serviceInstIdent
+	hnd.fetchSlotServiceInstIdent = serviceInstIdent + "-slot-f"
+	return
+}
+
 func (hnd *HTTPContentFetcher) processContentRequest(spanEmitter *qabalwrap.TraceEmitter, srcSerialIdent int, m *qbw1grpcgen.HTTPContentRequest) {
-	spanEmitter = spanEmitter.StartSpan("http-content-fetch-process-req: %d", m.ResponseIdent)
+	spanEmitter = spanEmitter.StartSpan(hnd.ServiceInstanceIdent, "http-content-fetch-process-req", "response-ident=%d", m.ResponseIdent)
 	if m.ResponseIdent != 0 {
 		if fetchSlot := hnd.getFetchSlot(spanEmitter, m.ResponseIdent); fetchSlot != nil {
 			fetchSlot.reqCh <- m
@@ -133,7 +145,7 @@ func (hnd *HTTPContentFetcher) processContentRequest(spanEmitter *qabalwrap.Trac
 }
 
 func (hnd *HTTPContentFetcher) processLinkClosed(spanEmitter *qabalwrap.TraceEmitter, m *qbw1grpcgen.HTTPContentLinkClosed) {
-	spanEmitter = spanEmitter.StartSpan("http-content-fetch-link-closed: resp=%d", m.ResponseIdent)
+	spanEmitter = spanEmitter.StartSpan(hnd.ServiceInstanceIdent, "http-content-fetch-link-closed", "response-ident=%d", m.ResponseIdent)
 	if m.ResponseIdent == 0 {
 		spanEmitter.FinishSpan("failed: empty response identifier")
 		return
@@ -148,7 +160,7 @@ func (hnd *HTTPContentFetcher) processLinkClosed(spanEmitter *qabalwrap.TraceEmi
 
 // ReceiveMessage implement ServiceProvider interface.
 func (hnd *HTTPContentFetcher) ReceiveMessage(spanEmitter *qabalwrap.TraceEmitter, envelopedMessage *qabalwrap.EnvelopedMessage) (err error) {
-	spanEmitter = spanEmitter.StartSpan("http-content-fetch-recv-msg")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(hnd.ServiceInstanceIdent, "http-content-fetch-recv-msg")
 	switch envelopedMessage.MessageContentType() {
 	case qabalwrap.MessageContentHTTPContentRequest:
 		var req qbw1grpcgen.HTTPContentRequest

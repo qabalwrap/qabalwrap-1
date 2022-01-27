@@ -50,7 +50,7 @@ func NewMessageSwitch(
 	diag *qabalwrap.DiagnosisEmitter,
 	textIdent, dnCountry, dnOrganization string,
 	primarySwitch bool) (s *MessageSwitch, err error) {
-	spanEmitter = spanEmitter.StartSpan("new-message-switch")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(qabalwrap.ServiceInstanceIdentifier(textIdent), "new-message-switch")
 	aux := &MessageSwitch{
 		ServiceBase: qabalwrap.ServiceBase{
 			ServiceInstanceIdent: qabalwrap.ServiceInstanceIdentifier(textIdent),
@@ -66,7 +66,8 @@ func NewMessageSwitch(
 		hostCertificateRequests:       make(chan *hostCertRequest, 8),
 		hostCertificateAssignments:    make(chan *hostCertAssignment, 8),
 	}
-	if err = aux.tlsCertProvider.Init(dnCountry, dnOrganization, stateStore, primarySwitch); nil != err {
+	if err = aux.tlsCertProvider.Init(qabalwrap.ServiceInstanceIdentifier(textIdent)+"-tlsprovider",
+		dnCountry, dnOrganization, stateStore, primarySwitch); nil != err {
 		spanEmitter.FinishSpanLogError("(NewMessageSwitch) init TLS certificate provider failed: %v", err)
 		return
 	}
@@ -88,7 +89,7 @@ func NewMessageSwitch(
 }
 
 func (s *MessageSwitch) refreshLocalServiceRef(spanEmitter *qabalwrap.TraceEmitter) (err error) {
-	spanEmitter = spanEmitter.StartSpan("switch-refresh-local-service-ref")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "switch-refresh-local-service-ref")
 	if conn := s.crossBar.findServiceConnectByTextIdent(s.localServiceRef.TextIdent); conn == nil {
 		spanEmitter.FinishSpanLogError("failed: (MessageSwitch::refreshLocalServiceRef) not reach message switch service: %s", s.localServiceRef.TextIdent)
 		err = ErrNotHavingMessageSwitchServiceRecord
@@ -120,7 +121,7 @@ func (s *MessageSwitch) refreshLocalServiceRef(spanEmitter *qabalwrap.TraceEmitt
 // Invoke at operating stage by local services.
 func (s *MessageSwitch) forwardClearEnvelopedMessage(
 	spanEmitter *qabalwrap.TraceEmitter, msg *qabalwrap.EnvelopedMessage) (err error) {
-	spanEmitter = spanEmitter.StartSpan("switch-forward-clear-message: src=%d, dst=%d", msg.SourceServiceIdent, msg.DestinationServiceIdent)
+	spanEmitter = spanEmitter.StartSpan(s.ServiceInstanceIdent, "switch-forward-clear-message", "src=%d, dst=%d", msg.SourceServiceIdent, msg.DestinationServiceIdent)
 	srcServiceConn, destServiceConn, err := s.crossBar.getTransmitionConnects(msg.SourceServiceIdent, msg.DestinationServiceIdent)
 	if nil != err {
 		spanEmitter.FinishSpan("failed: cannot have transmition connects: %v", err)
@@ -151,7 +152,7 @@ func (s *MessageSwitch) forwardClearEnvelopedMessage(
 // forwardEncryptedEnvelopedMessage send message to target service.
 // Invoke at operating stage by relay providers.
 func (s *MessageSwitch) forwardEncryptedEnvelopedMessage(spanEmitter *qabalwrap.TraceEmitter, msg *qabalwrap.EnvelopedMessage) (err error) {
-	spanEmitter = spanEmitter.StartSpan("switch-forward-encrypted-message: src=%d, dst=%d", msg.SourceServiceIdent, msg.DestinationServiceIdent)
+	spanEmitter = spanEmitter.StartSpan(s.ServiceInstanceIdent, "switch-forward-encrypted-message", "src=%d, dst=%d", msg.SourceServiceIdent, msg.DestinationServiceIdent)
 	srcServiceConn, destServiceConn, err := s.crossBar.getTransmitionConnects(msg.SourceServiceIdent, msg.DestinationServiceIdent)
 	if nil != err {
 		spanEmitter.FinishSpan("failed: cannot have transmition connects: %v", err)
@@ -181,7 +182,7 @@ func (s *MessageSwitch) forwardEncryptedEnvelopedMessage(spanEmitter *qabalwrap.
 }
 
 func (s *MessageSwitch) buildKnownServiceIdentsMessage(spanEmitter *qabalwrap.TraceEmitter) (msg *qabalwrap.EnvelopedMessage, digest md5digest.MD5Digest, err error) {
-	spanEmitter = spanEmitter.StartSpan("switch-build-known-service-idents-message")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "switch-build-known-service-idents-message")
 	knownServiceIdents, err := s.crossBar.makeKnownServiceIdentsSnapshot(spanEmitter, s.localServiceRef.SerialIdent)
 	if nil != err {
 		spanEmitter.FinishSpanLogError("failed: (MessageSwitch::buildKnownServiceIdentsMessage) cannot have known service idents: %v", err)
@@ -207,7 +208,7 @@ func (s *MessageSwitch) buildKnownServiceIdentsMessage(spanEmitter *qabalwrap.Tr
 
 func (s *MessageSwitch) nonblockingRelayPeerMessage(
 	spanEmitter *qabalwrap.TraceEmitter, relayIndex int, m *qabalwrap.EnvelopedMessage) {
-	spanEmitter = spanEmitter.StartSpan("switch-nonblock-relay-peer-msg: relay-index=%d", relayIndex)
+	spanEmitter = spanEmitter.StartSpan(s.ServiceInstanceIdent, "switch-nonblock-relay-peer-msg", "relay-index=%d", relayIndex)
 	if (relayIndex < 0) || (relayIndex >= len(s.messageDispatchers)) {
 		spanEmitter.FinishSpanLogError("failed: (MessageSwitch::nonblockingRelayPeerMessage) invalid relay index: %d", relayIndex)
 		return
@@ -221,7 +222,7 @@ func (s *MessageSwitch) nonblockingRelayPeerMessage(
 
 func (s *MessageSwitch) nonblockingRelayPeerBroadcast(
 	spanEmitter *qabalwrap.TraceEmitter, m *qabalwrap.EnvelopedMessage) {
-	spanEmitter = spanEmitter.StartSpan("switch-nonblock-relay-peer-broadcast")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "switch-nonblock-relay-peer-broadcast")
 	defer spanEmitter.FinishSpan("success")
 	for _, msgDispatcher := range s.messageDispatchers {
 		if !msgDispatcher.relayInst.NonblockingEmitMessage(spanEmitter, m) {
@@ -231,7 +232,7 @@ func (s *MessageSwitch) nonblockingRelayPeerBroadcast(
 }
 
 func (s *MessageSwitch) checkCrossBarServiceConnectChanged(spanEmitter *qabalwrap.TraceEmitter) {
-	spanEmitter = spanEmitter.StartSpan("switch-check-crossbar-service-connect-changed")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "switch-check-crossbar-service-connect-changed")
 	if s.crossBar.getCurrentKnownServiceModifyTimestamp() == 0 {
 		spanEmitter.FinishSpan("success: empty modify timestamp")
 		return
@@ -255,7 +256,7 @@ func (s *MessageSwitch) checkCrossBarServiceConnectChanged(spanEmitter *qabalwra
 // emitRelayHeartbeat send heartbeat to relaies and collect losted relaies.
 // Invoked by maintenance routine.
 func (s *MessageSwitch) emitRelayHeartbeat(spanEmitter *qabalwrap.TraceEmitter) (linkLostRelay []int) {
-	spanEmitter = spanEmitter.StartSpan("switch-emit-relay-heartbeat")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "switch-emit-relay-heartbeat")
 	for _, dispatcher := range s.messageDispatchers {
 		if dispatcher.shouldEmitHeartbeat() {
 			dispatcher.emitHeartbeatPing(spanEmitter)
@@ -270,7 +271,7 @@ func (s *MessageSwitch) emitRelayHeartbeat(spanEmitter *qabalwrap.TraceEmitter) 
 }
 
 func (s *MessageSwitch) emitAllocateServiceIdentsRequest(spanEmitter *qabalwrap.TraceEmitter) {
-	spanEmitter = spanEmitter.StartSpan("switch-emit-allocate-service-ident-req")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "switch-emit-allocate-service-ident-req")
 	if s.primarySwitch {
 		spanEmitter.FinishSpan("success: (MessageSwitch::requestServiceSerialAssignment) skip emitAllocateServiceIdentsRequest on primary switch.")
 		return
@@ -310,7 +311,7 @@ func (s *MessageSwitch) emitAllocateServiceIdentsRequest(spanEmitter *qabalwrap.
 }
 
 func (s *MessageSwitch) emitRootCertificateRequest(spanEmitter *qabalwrap.TraceEmitter) {
-	spanEmitter = spanEmitter.StartSpan("switch-emit-root-cert-req")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "switch-emit-root-cert-req")
 	if s.tlsCertProvider.HaveRootCertificate() {
 		spanEmitter.FinishSpan("success: (MessageSwitch::emitRootCertificateRequest) skip emitRootCertificateRequest as root certificate existed.")
 		return
@@ -337,7 +338,7 @@ func (s *MessageSwitch) emitRootCertificateRequest(spanEmitter *qabalwrap.TraceE
 }
 
 func (s *MessageSwitch) emitHostCertificateRequests(spanEmitter *qabalwrap.TraceEmitter) {
-	spanEmitter = spanEmitter.StartSpan("switch-emit-host-cert-reqs")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "switch-emit-host-cert-reqs")
 	hostNames := s.tlsCertProvider.CollectSelfSignedHosts(spanEmitter)
 	if len(hostNames) == 0 {
 		spanEmitter.FinishSpan("success: empty host names")
@@ -377,7 +378,7 @@ func (s *MessageSwitch) maintenanceWorks(ctx context.Context, waitGroup *sync.Wa
 	spanEmitter.FinishSpan("success")
 	running := true
 	for running {
-		spanEmitter = s.diagnosisEmitter.StartTraceWithMessage(s.ServiceInstanceIdent, "switch-maintenance-work", "iteration %v", time.Now())
+		spanEmitter = s.diagnosisEmitter.StartTrace(s.ServiceInstanceIdent, "switch-maintenance-work", "iteration %v", time.Now())
 		s.checkCrossBarServiceConnectChanged(spanEmitter)
 		select {
 		case notice := <-s.notifyPeerKnownServiceIdents:
@@ -411,7 +412,7 @@ func (s *MessageSwitch) maintenanceWorks(ctx context.Context, waitGroup *sync.Wa
 		}
 		spanEmitter.FinishSpan("success")
 	}
-	spanEmitter = s.diagnosisEmitter.StartTraceWithMessage(s.ServiceInstanceIdent, "switch-maintenance-work", "(MessageSwitch::maintenanceWorks) leaving maintenance work loop.")
+	spanEmitter = s.diagnosisEmitter.StartTrace(s.ServiceInstanceIdent, "switch-maintenance-work", "(MessageSwitch::maintenanceWorks) leaving maintenance work loop.")
 	s.checkCrossBarServiceConnectChanged(spanEmitter)
 	spanEmitter.FinishSpan("success: (MessageSwitch::maintenanceWorks) maintenance work loop stopped.")
 }
@@ -427,7 +428,7 @@ func (s *MessageSwitch) Setup(
 }
 
 func (s *MessageSwitch) postSetup(spanEmitter *qabalwrap.TraceEmitter) {
-	spanEmitter = spanEmitter.StartSpan("switch-post-setup")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "switch-post-setup")
 	defer spanEmitter.FinishSpan("success")
 	relayProviders := s.crossBar.relayProviders
 	s.messageDispatchers = make([]*messageDispatcher, len(relayProviders))
@@ -467,7 +468,7 @@ func (s *MessageSwitch) Start(ctx context.Context, waitGroup *sync.WaitGroup, sp
 	if spanEmitter == nil {
 		spanEmitter = s.diagnosisEmitter.StartTraceWithoutMessage(s.ServiceInstanceIdent, "message-switch-start")
 	} else {
-		spanEmitter = spanEmitter.StartSpan("message-switch-start")
+		spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "message-switch-start")
 	}
 	if s.primarySwitch {
 		s.crossBar.assignServiceSerialIdents(spanEmitter)
@@ -500,7 +501,7 @@ func (s *MessageSwitch) Stop() {
 // ReceiveMessage deliver message into this instance of service provider.
 // The message should decypted before pass into this method.
 func (s *MessageSwitch) ReceiveMessage(spanEmitter *qabalwrap.TraceEmitter, m *qabalwrap.EnvelopedMessage) (err error) {
-	spanEmitter = spanEmitter.StartSpan("switch-receive-message")
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "switch-receive-message")
 	switch m.MessageContentType() {
 	case qabalwrap.MessageContentAllocateServiceIdentsRequest:
 		if err = queueAllocateServiceIdentsRequest(spanEmitter, s, m); nil != err {

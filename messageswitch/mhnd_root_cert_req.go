@@ -11,7 +11,7 @@ func queueRootCertificateRequest(
 	spanEmitter *qabalwrap.TraceEmitter,
 	s *MessageSwitch,
 	m *qabalwrap.EnvelopedMessage) {
-	spanEmitter.StartSpan("queue-root-cert-req: %d", m.SourceServiceIdent)
+	spanEmitter.StartSpan(s.ServiceInstanceIdent, "queue-root-cert-req", "src-srv=%d", m.SourceServiceIdent)
 	defer spanEmitter.FinishSpan("success")
 	s.rootCertificateRequests <- &rootCertRequest{
 		spanEmitter:        spanEmitter,
@@ -21,7 +21,7 @@ func queueRootCertificateRequest(
 
 func handleRootCertificateRequest(s *MessageSwitch, rootCertReq *rootCertRequest) (err error) {
 	requestSourceIdent := rootCertReq.sourceServiceIdent
-	spanEmitter := rootCertReq.spanEmitter.StartSpan("handle-root-cert-req: %d", requestSourceIdent)
+	spanEmitter := rootCertReq.spanEmitter.StartSpan(s.ServiceInstanceIdent, "handle-root-cert-req", "req-src=%d", requestSourceIdent)
 	if s.tlsCertProvider.RootCertKeyPair == nil {
 		spanEmitter.FinishSpan("success: WARN (handleRootCertificateRequest) root certificate is empty")
 		return
