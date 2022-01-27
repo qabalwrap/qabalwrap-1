@@ -21,11 +21,28 @@ var instrumentLibrary = instrumentation.Library{
 	SchemaURL: semconv.SchemaURL,
 }
 
-var serviceResourceAttr = resource.NewWithAttributes(
+var defaultServiceResourceAttr = resource.NewWithAttributes(
 	semconv.SchemaURL,
-	semconv.ServiceNameKey.String(runnerActionName),
+	semconv.ServiceNameKey.String("qabalwrap-empty-service-name"),
 	semconv.ServiceVersionKey.String(runnerActionVersion),
 )
+
+var serviceNameAttrMap = make(map[string]*resource.Resource)
+
+func findServiceNameResource(serviceName string) *resource.Resource {
+	if serviceName == "" {
+		return defaultServiceResourceAttr
+	}
+	srvRes := serviceNameAttrMap[serviceName]
+	if srvRes == nil {
+		srvRes = resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceNameKey.String(serviceName),
+		)
+		serviceNameAttrMap[serviceName] = srvRes
+	}
+	return srvRes
+}
 
 func makeSpanContext(traceIdent, spanIdent uint64) (result trace.SpanContext) {
 	resultCfg := trace.SpanContextConfig{
@@ -48,25 +65,13 @@ func addSessionIdentToTraceSpanIdent(sessionIdent uint32, traceIdent, spanIdent 
 	return
 }
 
-func splitMessageText(mixedText string) (titleText, messageText string) {
-	b := []byte(mixedText)
-	for idx, ch := range b {
-		if ch == ':' {
-			titleText = mixedText[:idx]
-			messageText = mixedText
-			return
-		}
-	}
-	titleText = mixedText
-	return
-}
-
 type spanInstance struct {
 	sdktrace.ReadOnlySpan
 
 	TraceIdent      uint64
 	SpanIdent       uint64
 	ParentSpanIdent uint64
+	ServiceName     string
 	TitleText       string
 	MessageText     string
 	StartAt         time.Time
@@ -86,20 +91,20 @@ func newSpanInstance(sessionIdent uint32, traceRec *gen.TraceRecord) (s *spanIns
 	if traceRec.ParentSpanIdent != traceRec.SpanIdent {
 		parentSpanIdent = (uint64(sessionIdent) << 32) | uint64(traceRec.ParentSpanIdent)
 	}
-	titleText, messageText := splitMessageText(traceRec.MessageText)
 	s = &spanInstance{
 		TraceIdent:      traceIdent,
 		SpanIdent:       spanIdent,
 		ParentSpanIdent: parentSpanIdent,
-		TitleText:       titleText,
-		MessageText:     messageText,
+		ServiceName:     traceRec.ServiceName,
+		TitleText:       traceRec.OperationName,
+		MessageText:     traceRec.MessageText,
 		StartAt:         time.Unix(0, traceRec.EmitAt),
 	}
 	return
 }
 
 func (s *spanInstance) finishSpan(traceRec *gen.TraceRecord) {
-	if (traceRec.MessageText != "") && (traceRec.MessageText[0] == 's') {
+	if traceRec.IsSuccess {
 		s.statusSuccess = true
 	} else {
 		s.statusFailed = true
@@ -223,7 +228,7 @@ func (s *spanInstance) Links() []sdktrace.Link {
 // Events returns all the events that occurred within in the spans
 // lifetime.
 func (s *spanInstance) Events() []sdktrace.Event {
-	return nil
+	return s.loggedEvents
 }
 
 // Status returns the spans status.
@@ -249,7 +254,7 @@ func (s *spanInstance) InstrumentationLibrary() instrumentation.Library {
 
 // Resource returns information about the entity that produced the span.
 func (s *spanInstance) Resource() *resource.Resource {
-	return serviceResourceAttr
+	return findServiceNameResource(s.ServiceName)
 }
 
 // DroppedAttributes returns the number of attributes dropped by the span
