@@ -87,7 +87,7 @@ func (s *Service) Setup(
 	certProvider qabalwrap.CertificateProvider) (err error) {
 	s.ServiceInstanceIdent = serviceInstIdent
 	spanEmitter := diagnosisEmitter.StartTraceWithoutMessage(s.ServiceInstanceIdent, "servers-http-start-setup")
-	defer spanEmitter.FinishSpan("success")
+	defer spanEmitter.FinishSpanSuccessWithoutMessage()
 	hostNames := make([]string, 0, len(s.hostHandlers))
 	for hostName := range s.hostHandlers {
 		hostNames = append(hostNames, hostName)

@@ -92,23 +92,23 @@ func (h *knownServiceIdentsNotifyHandler) handle(notice *knownServiceIdentsNotif
 	}
 	knownServiceIdentsMessage, knownServiceIdentsDigest, err := h.s.buildKnownServiceIdentsMessage(spanEmitter)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: (knownServiceIdentsNotifyHandler::handle) cannot build known service identifiers message: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(knownServiceIdentsNotifyHandler::handle) cannot build known service identifiers message: %v", err)
 		return
 	}
 	if knownServiceIdentsDigest == h.messageDigest {
 		h.s.nonblockingRelayPeerMessage(spanEmitter, notice.relayIndex, h.messageCache)
-		spanEmitter.FinishSpan("success: use cache")
+		spanEmitter.FinishSpanSuccess("use cache")
 	} else {
 		h.messageCache = knownServiceIdentsMessage
 		h.messageDigest = knownServiceIdentsDigest
 		h.s.nonblockingRelayPeerBroadcast(spanEmitter, h.messageCache)
-		spanEmitter.FinishSpan("success: changed")
+		spanEmitter.FinishSpanSuccess("changed")
 	}
 }
 
 func (h *knownServiceIdentsNotifyHandler) emitCachedKnownServiceIdents(spanEmitter *qabalwrap.TraceEmitter, relayIndex int) {
 	spanEmitter = spanEmitter.StartSpanWithoutMessage(h.s.ServiceInstanceIdent, "emit-cache-for-known-service-ident-notify")
-	defer spanEmitter.FinishSpan("success")
+	defer spanEmitter.FinishSpanSuccessWithoutMessage()
 	h.s.nonblockingRelayPeerMessage(spanEmitter, relayIndex, h.messageCache)
 }
 
@@ -116,16 +116,16 @@ func (h *knownServiceIdentsNotifyHandler) checkChanges(spanEmitter *qabalwrap.Tr
 	spanEmitter = spanEmitter.StartSpanWithoutMessage(h.s.ServiceInstanceIdent, "known-service-ident-notify-check-change")
 	knownServiceIdentsMessage, knownServiceIdentsDigest, err := h.s.buildKnownServiceIdentsMessage(spanEmitter)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: (knownServiceIdentsNotifyHandler::checkChanges) cannot build known service identifiers message: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(knownServiceIdentsNotifyHandler::checkChanges) cannot build known service identifiers message: %v", err)
 		return
 	}
 	if knownServiceIdentsDigest == h.messageDigest {
-		spanEmitter.FinishSpan("success: (knownServiceIdentsNotifyHandler::checkChanges) no change.")
+		spanEmitter.FinishSpanSuccess("(knownServiceIdentsNotifyHandler::checkChanges) no change.")
 		return
 	}
 	spanEmitter.EventInfo("(knownServiceIdentsNotifyHandler::checkChanges) changed.")
 	h.messageCache = knownServiceIdentsMessage
 	h.messageDigest = knownServiceIdentsDigest
 	h.s.nonblockingRelayPeerBroadcast(spanEmitter, h.messageCache)
-	spanEmitter.FinishSpan("success")
+	spanEmitter.FinishSpanSuccessWithoutMessage()
 }

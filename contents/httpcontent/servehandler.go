@@ -47,14 +47,14 @@ func (hnd *HTTPContentServeHandler) allocateTransferSlot(ctx context.Context, sp
 	defer hnd.lckTransferSlots.Unlock()
 	l := len(hnd.freeTransferSlotIndexes)
 	if l == 0 {
-		spanEmitter.FinishSpan("failed: no free slot available")
+		spanEmitter.FinishSpanFailedLogf("no free slot available")
 		return
 	}
 	targetIndex := hnd.freeTransferSlotIndexes[l-1]
 	hnd.freeTransferSlotIndexes = hnd.freeTransferSlotIndexes[:(l - 1)]
 	transferSlot = newHTTPContentTransferSlot(ctx, hnd.transferSlotServiceInstIdent, targetIndex, hnd.messageSender, hnd.fetcherSeriaIdent)
 	hnd.transferSlots[targetIndex] = transferSlot
-	spanEmitter.FinishSpan("success: found: %d", targetIndex)
+	spanEmitter.FinishSpanSuccess("found: %d", targetIndex)
 	return
 }
 
@@ -64,13 +64,13 @@ func (hnd *HTTPContentServeHandler) releaseTransferSlot(spanEmitter *qabalwrap.T
 	defer hnd.lckTransferSlots.Unlock()
 	targetIndex := transferSlot.slotIndex
 	if (hnd.transferSlots[targetIndex] == nil) || (hnd.transferSlots[targetIndex].slotIdent != transferSlot.slotIdent) {
-		spanEmitter.FinishSpanLogError("failed: (HTTPContentServeHandler::releaseTransferSlot) attempt to release non-matched slot: %d", transferSlot.slotIdent)
+		spanEmitter.FinishSpanFailedLogf("(HTTPContentServeHandler::releaseTransferSlot) attempt to release non-matched slot: %d", transferSlot.slotIdent)
 		return
 	}
 	hnd.transferSlots[targetIndex].release()
 	hnd.transferSlots[targetIndex] = nil
 	hnd.freeTransferSlotIndexes = append(hnd.freeTransferSlotIndexes, targetIndex)
-	spanEmitter.FinishSpan("success")
+	spanEmitter.FinishSpanSuccessWithoutMessage()
 }
 
 func (hnd *HTTPContentServeHandler) getTransferSlot(spanEmitter *qabalwrap.TraceEmitter, transferSlotIdent int32) (transferSlot *httpContentTransferSlot) {
@@ -79,45 +79,45 @@ func (hnd *HTTPContentServeHandler) getTransferSlot(spanEmitter *qabalwrap.Trace
 	defer hnd.lckTransferSlots.Unlock()
 	idx := int(transferSlotIdent & 0x0000FFFF)
 	if (idx < 0) || (idx >= len(hnd.transferSlots)) {
-		spanEmitter.FinishSpanLogError("failed: (HTTPContentServeHandler::getTransferSlot) index out of range: %d, %d", transferSlotIdent, idx)
+		spanEmitter.FinishSpanFailedLogf("(HTTPContentServeHandler::getTransferSlot) index out of range: %d, %d", transferSlotIdent, idx)
 		return
 	}
 	if hnd.transferSlots[idx] == nil {
-		spanEmitter.FinishSpanLogError("failed: (HTTPContentServeHandler::getTransferSlot) identifier not existed: ident=%d, idx=%d", transferSlotIdent, idx)
+		spanEmitter.FinishSpanFailedLogf("(HTTPContentServeHandler::getTransferSlot) identifier not existed: ident=%d, idx=%d", transferSlotIdent, idx)
 		return
 	} else if hnd.transferSlots[idx].slotIdent != transferSlotIdent {
-		spanEmitter.FinishSpanLogError("failed: (HTTPContentServeHandler::getTransferSlot) identifier not match: ident=%d, idx=%d", transferSlotIdent, idx)
+		spanEmitter.FinishSpanFailedLogf("(HTTPContentServeHandler::getTransferSlot) identifier not match: ident=%d, idx=%d", transferSlotIdent, idx)
 		return
 	}
 	transferSlot = hnd.transferSlots[idx]
-	spanEmitter.FinishSpan("success")
+	spanEmitter.FinishSpanSuccessWithoutMessage()
 	return
 }
 
 func (hnd *HTTPContentServeHandler) isFetcherLinkAvailable(spanEmitter *qabalwrap.TraceEmitter) bool {
 	spanEmitter = spanEmitter.StartSpanWithoutMessage(hnd.ServiceInstanceIdent, "check-fetcher-link")
 	if hnd.messageSender == nil {
-		spanEmitter.FinishSpan("failed: empty message sender")
+		spanEmitter.FinishSpanFailed("failed: empty message sender")
 		return false
 	}
 	hnd.lckFetcherRef.Lock()
 	defer hnd.lckFetcherRef.Unlock()
 	if hnd.fetcherSeriaIdent != qabalwrap.UnknownServiceIdent {
-		spanEmitter.FinishSpan("success: cached")
+		spanEmitter.FinishSpanSuccess("cached")
 		return true
 	}
 	serialIdent, hasReceiver, ok := hnd.messageSender.ServiceSerialIdentByTextIdent(hnd.fetcherIdent)
 	if !ok {
-		spanEmitter.FinishSpan("failed: (HTTPContentServeHandler::isFetcherLinkAvailable) service reference unavailable [%s]",
+		spanEmitter.FinishSpanFailed("(HTTPContentServeHandler::isFetcherLinkAvailable) service reference unavailable [%s]",
 			hnd.fetcherIdent)
 		return false
 	}
 	if !hasReceiver {
-		spanEmitter.FinishSpan("failed: (HTTPContentServeHandler::isFetcherLinkAvailable) fetcher receiver unavailable [%s]", hnd.fetcherIdent)
+		spanEmitter.FinishSpanFailed("(HTTPContentServeHandler::isFetcherLinkAvailable) fetcher receiver unavailable [%s]", hnd.fetcherIdent)
 		return false
 	}
 	hnd.fetcherSeriaIdent = serialIdent
-	spanEmitter.FinishSpan("success: fetcher serial identifier: %d", serialIdent)
+	spanEmitter.FinishSpanSuccess("fetcher serial identifier: %d", serialIdent)
 	return true
 }
 
@@ -127,18 +127,18 @@ func (hnd *HTTPContentServeHandler) ServeHTTP(w http.ResponseWriter, r *http.Req
 		hnd.fetcherIdent, hnd.fetcherSeriaIdent, r.Method, r.URL.String())
 	if !hnd.isFetcherLinkAvailable(traceEmitter) {
 		http.Error(w, "content link unavailable", http.StatusServiceUnavailable)
-		traceEmitter.FinishTrace("failed: fetcher link unavailable")
+		traceEmitter.FinishSpanFailed("fetcher link unavailable")
 		return
 	}
 	transferSlot := hnd.allocateTransferSlot(ctx, traceEmitter)
 	if transferSlot == nil {
 		http.Error(w, "out of transfer slots", http.StatusServiceUnavailable)
-		traceEmitter.FinishTrace("failed: out of transfer slots")
+		traceEmitter.FinishSpanFailed("out of transfer slots")
 		return
 	}
 	defer hnd.releaseTransferSlot(traceEmitter, transferSlot)
 	transferSlot.serve(traceEmitter, w, r)
-	traceEmitter.FinishSpan("success")
+	traceEmitter.FinishSpanSuccessWithoutMessage()
 }
 
 func (hnd *HTTPContentServeHandler) processContentResponse(
@@ -183,13 +183,13 @@ func (hnd *HTTPContentServeHandler) ReceiveMessage(spanEmitter *qabalwrap.TraceE
 	case qabalwrap.MessageContentHTTPContentResponse:
 		var req qbw1grpcgen.HTTPContentResponse
 		if err = envelopedMessage.Unmarshal(&req); nil != err {
-			spanEmitter.FinishSpanLogError("failed: (HTTPContentServeHandler::ReceiveMessage) unmarshal response failed: %v", err)
+			spanEmitter.FinishSpanFailedLogf("(HTTPContentServeHandler::ReceiveMessage) unmarshal response failed: %v", err)
 			return
 		}
 		hnd.processContentResponse(spanEmitter, &req, envelopedMessage.SourceServiceIdent)
-		spanEmitter.FinishSpan("success")
+		spanEmitter.FinishSpanSuccessWithoutMessage()
 	default:
-		spanEmitter.FinishSpanLogError("failed: (HTTPContentServeHandler::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", envelopedMessage.SourceServiceIdent, envelopedMessage.DestinationServiceIdent, envelopedMessage.MessageContentType())
+		spanEmitter.FinishSpanFailedLogf("(HTTPContentServeHandler::ReceiveMessage) unprocess message from %d to %d [content-type=%d].", envelopedMessage.SourceServiceIdent, envelopedMessage.DestinationServiceIdent, envelopedMessage.MessageContentType())
 	}
 	return
 }
@@ -201,7 +201,7 @@ func (hnd *HTTPContentServeHandler) SetMessageSender(messageSender qabalwrap.Mes
 
 func (hnd *HTTPContentServeHandler) Stop() {
 	traceEmitter := hnd.diagnosisEmitter.StartTraceWithoutMessage(hnd.ServiceInstanceIdent, "stop-http-content-serve")
-	defer traceEmitter.FinishTrace("success")
+	defer traceEmitter.FinishSpanSuccessWithoutMessage()
 	hnd.lckTransferSlots.Lock()
 	defer hnd.lckTransferSlots.Unlock()
 	for idx, slot := range hnd.transferSlots {

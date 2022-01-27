@@ -107,14 +107,14 @@ func (p *HTTPClientAccessProvider) exchangeInBinary(spanEmitter *qabalwrap.Trace
 	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.ServiceInstanceIdent, "client-access-xc-bin")
 	resultPayload, exportedMessageCount, err := p.packMessages(p.ctx, spanEmitter, collectTimeout)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInBinary) having error on packaging payload: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(HTTPClientAccessProvider::exchangeInBinary) having error on packaging payload: %v", err)
 		return
 	}
 	targetURL := p.targetServerBaseURL + "/b/" + strconv.FormatInt(time.Now().UnixNano(), 16)
 	payloadReader := bytes.NewReader(resultPayload)
 	req, err := http.NewRequestWithContext(p.ctx, http.MethodPost, targetURL, payloadReader)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInBinary) cannot create request: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(HTTPClientAccessProvider::exchangeInBinary) cannot create request: %v", err)
 		return
 	}
 	req.Header.Set("User-Agent", HTTPClientAccessProviderUserAgent)
@@ -124,7 +124,7 @@ func (p *HTTPClientAccessProvider) exchangeInBinary(spanEmitter *qabalwrap.Trace
 	}
 	resp, err := p.clientInst.Do(req)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInBinary) error on emit request: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(HTTPClientAccessProvider::exchangeInBinary) error on emit request: %v", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -134,10 +134,10 @@ func (p *HTTPClientAccessProvider) exchangeInBinary(spanEmitter *qabalwrap.Trace
 		return
 	}
 	if dispatchedMessageCount, err = p.dispatchMessages(spanEmitter, resp.Body); nil != err {
-		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInBinary) having error on import payload: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(HTTPClientAccessProvider::exchangeInBinary) having error on import payload: %v", err)
 		return
 	}
-	spanEmitter.FinishSpan("success: transmitted: up %d, down %d.", exportedMessageCount, dispatchedMessageCount)
+	spanEmitter.FinishSpanSuccess("transmitted: up %d, down %d.", exportedMessageCount, dispatchedMessageCount)
 	return
 }
 
@@ -145,7 +145,7 @@ func (p *HTTPClientAccessProvider) exchangeInText(spanEmitter *qabalwrap.TraceEm
 	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.ServiceInstanceIdent, "client-access-xc-txt")
 	resultBinaries, exportedMessageCount, err := p.packMessages(p.ctx, spanEmitter, collectTimeout)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInText) having error on packaging payload: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(HTTPClientAccessProvider::exchangeInText) having error on packaging payload: %v", err)
 		return
 	}
 	resultPayload := make([]byte, base64.StdEncoding.EncodedLen(len(resultBinaries)))
@@ -154,7 +154,7 @@ func (p *HTTPClientAccessProvider) exchangeInText(spanEmitter *qabalwrap.TraceEm
 	payloadReader := bytes.NewReader(resultPayload)
 	req, err := http.NewRequestWithContext(p.ctx, http.MethodPost, targetURL, payloadReader)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInText) cannot create request: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(HTTPClientAccessProvider::exchangeInText) cannot create request: %v", err)
 		return
 	}
 	req.Header.Set("User-Agent", HTTPClientAccessProviderUserAgent)
@@ -164,7 +164,7 @@ func (p *HTTPClientAccessProvider) exchangeInText(spanEmitter *qabalwrap.TraceEm
 	}
 	resp, err := p.clientInst.Do(req)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInText) error on emit request: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(HTTPClientAccessProvider::exchangeInText) error on emit request: %v", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -175,10 +175,10 @@ func (p *HTTPClientAccessProvider) exchangeInText(spanEmitter *qabalwrap.TraceEm
 	}
 	b64decoder := base64.NewDecoder(base64.StdEncoding, resp.Body)
 	if dispatchedMessageCount, err = p.dispatchMessages(spanEmitter, b64decoder); nil != err {
-		spanEmitter.FinishSpanLogError("failed: (HTTPClientAccessProvider::exchangeInText) having error on import payload: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(HTTPClientAccessProvider::exchangeInText) having error on import payload: %v", err)
 		return
 	}
-	spanEmitter.FinishSpan("success: transmitted: up %d, down %d.", exportedMessageCount, dispatchedMessageCount)
+	spanEmitter.FinishSpanSuccess("transmitted: up %d, down %d.", exportedMessageCount, dispatchedMessageCount)
 	return
 }
 
@@ -214,7 +214,7 @@ func (p *HTTPClientAccessProvider) exchangeLoop(waitGroup *sync.WaitGroup) {
 			}
 		}
 		if p.ctx.Err() != nil {
-			spanEmitter.FinishSpan("success: INFO: (HTTPClientAccessProvider::exchangeLoop) exit loop.")
+			spanEmitter.FinishSpanSuccess("INFO: (HTTPClientAccessProvider::exchangeLoop) exit loop.")
 			return
 		}
 		if failureCount > 0 {
@@ -236,7 +236,7 @@ func (p *HTTPClientAccessProvider) exchangeLoop(waitGroup *sync.WaitGroup) {
 			spanEmitter.EventInfo("(HTTPClientAccessProvider::exchangeLoop) left delay: %v", delay)
 			p.clientInst.CloseIdleConnections()
 			collectTimeout = slowEmptyMessageCollectTimeout
-			spanEmitter.FinishSpan("success: continue (failureCount=%d)", failureCount)
+			spanEmitter.FinishSpanSuccess("INFO: continue (failureCount=%d)", failureCount)
 			continue
 		}
 		if (exportedMessageCount > 0) || (dispatchedMessageCount > 0) {
@@ -249,7 +249,7 @@ func (p *HTTPClientAccessProvider) exchangeLoop(waitGroup *sync.WaitGroup) {
 			spanEmitter.EventInfo("(HTTPClientAccessProvider::exchangeLoop) close idle connections")
 			lastIdleClientCleanup = time.Now()
 		}
-		spanEmitter.FinishSpan("success")
+		spanEmitter.FinishSpanSuccessWithoutMessage()
 	}
 }
 

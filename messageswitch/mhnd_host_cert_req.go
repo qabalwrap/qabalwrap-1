@@ -8,13 +8,13 @@ import (
 func queueHostCertificateRequest(spanEmitter *qabalwrap.TraceEmitter, s *MessageSwitch, m *qabalwrap.EnvelopedMessage) (err error) {
 	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "queue-host-cert-req")
 	if !s.primarySwitch {
-		spanEmitter.FinishSpanLogError("failed: (queueHostCertificateRequest) non-primary switch does not accept certificate request (src=%d, dest=%d)",
+		spanEmitter.FinishSpanFailedLogf("(queueHostCertificateRequest) non-primary switch does not accept certificate request (src=%d, dest=%d)",
 			m.SourceServiceIdent, m.DestinationServiceIdent)
 		return ErrNotSupportedOperation
 	}
 	var a qbw1grpcgen.HostCertificateRequest
 	if err = m.Unmarshal(&a); nil != err {
-		spanEmitter.FinishSpanLogError("failed: (queueHostCertificateRequest) unmarshal assignment failed: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(queueHostCertificateRequest) unmarshal assignment failed: %v", err)
 		return
 	}
 	hostName := a.HostDNSName
@@ -32,23 +32,23 @@ func handleHostCertificateRequest(s *MessageSwitch, req *hostCertRequest) (err e
 	spanEmitter := req.spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "handle-host-cert-req")
 	resp, err := s.tlsCertProvider.PrepareQBw1HostCertificateAssignment(spanEmitter, req.hostName)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: (handleHostCertificateRequest) request certificate for [%s] failed: %v", req.hostName, err)
+		spanEmitter.FinishSpanFailedLogf("(handleHostCertificateRequest) request certificate for [%s] failed: %v", req.hostName, err)
 		return
 	}
 	if resp == nil {
-		spanEmitter.FinishSpanLogError("failed: (handleHostCertificateRequest) request certificate for [%s] result empty", req.hostName)
+		spanEmitter.FinishSpanFailedLogf("(handleHostCertificateRequest) request certificate for [%s] result empty", req.hostName)
 		return ErrNotSupportedOperation
 	}
 	m, err := qabalwrap.MarshalIntoClearEnvelopedMessage(s.localServiceRef.SerialIdent, req.sourceSerialIdent,
 		qabalwrap.MessageContentHostCertificateAssignment, resp)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: (handleHostCertificateRequest) cannot marshal root certificate request: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(handleHostCertificateRequest) cannot marshal root certificate request: %v", err)
 		return
 	}
 	if err = s.forwardClearEnvelopedMessage(spanEmitter, m); nil != err {
-		spanEmitter.FinishSpanLogError("failed: (handleHostCertificateRequest) cannot emit enveloped message: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(handleHostCertificateRequest) cannot emit enveloped message: %v", err)
 	} else {
-		spanEmitter.FinishSpan("success: (handleHostCertificateRequest) responed: hostname=%s, destination=%d", req.hostName, req.sourceSerialIdent)
+		spanEmitter.FinishSpanSuccess("(handleHostCertificateRequest) responed: hostname=%s, destination=%d", req.hostName, req.sourceSerialIdent)
 	}
 	return
 }

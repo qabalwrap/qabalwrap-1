@@ -160,7 +160,7 @@ func (cfg *configuration) makeInstance() (ctx context.Context, cancel context.Ca
 	spanEmitter := diag.StartTraceWithoutMessage(qabalwrap.ServiceInstanceIdentifier("qabalwrapd-config"), "qabalwrapd-config-make-instance")
 	msgSwitchStateStore, err := qabalwrap.NewStateStore(cfg.StateFolder, qabalwrap.ServiceTypeTextMessageSwitch, cfg.MessageSwitch.TextIdent)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: cannot setup state store for message switch [%s]: %v", cfg.MessageSwitch.TextIdent, err)
+		spanEmitter.FinishSpanFailedLogf("cannot setup state store for message switch [%s]: %v", cfg.MessageSwitch.TextIdent, err)
 		return
 	}
 	ctx, cancel = context.WithCancel(context.Background())
@@ -171,11 +171,11 @@ func (cfg *configuration) makeInstance() (ctx context.Context, cancel context.Ca
 		cfg.MessageSwitch.TextIdent,
 		cfg.MessageSwitch.DN.Country, cfg.MessageSwitch.DN.Organization,
 		cfg.MessageSwitch.PrimaryEnablement); nil != err {
-		spanEmitter.FinishSpanLogError("failed: cannot setup message switch [%s]: %v", cfg.MessageSwitch.TextIdent, err)
+		spanEmitter.FinishSpanFailedLogf("cannot setup message switch [%s]: %v", cfg.MessageSwitch.TextIdent, err)
 		return
 	}
 	if err = cfg.setupDiagnosisSocketService(ctx, msgSwitch); nil != err {
-		spanEmitter.FinishSpanLogError("failed: setup diagnosis RPC service failed: %v", err)
+		spanEmitter.FinishSpanFailedLogf("setup diagnosis RPC service failed: %v", err)
 		return
 	}
 	httpSrvs := make(map[string]*qbw1httpserver.Service)
@@ -184,28 +184,28 @@ func (cfg *configuration) makeInstance() (ctx context.Context, cancel context.Ca
 		httpSrvs[opt.TextIdent] = srv
 	}
 	if err = cfg.setupAccessProviderHTTPServerService(ctx, msgSwitch, httpSrvs); nil != err {
-		spanEmitter.FinishSpanLogError("failed: setup HTTP server based access provider failed: %v", err)
+		spanEmitter.FinishSpanFailedLogf("setup HTTP server based access provider failed: %v", err)
 		return
 	}
 	if err = cfg.setupAccessProviderHTTPClientService(ctx, msgSwitch); nil != err {
-		spanEmitter.FinishSpanLogError("failed: setup HTTP client based access provider failed: %v", err)
+		spanEmitter.FinishSpanFailedLogf("setup HTTP client based access provider failed: %v", err)
 		return
 	}
 	if err = cfg.setupContentHTTPFetchService(ctx, msgSwitch); nil != err {
-		spanEmitter.FinishSpanLogError("failed: setup HTTP content fetcher service failed: %v", err)
+		spanEmitter.FinishSpanFailedLogf("setup HTTP content fetcher service failed: %v", err)
 		return
 	}
 	if err = cfg.setupContentHTTPEdgeService(ctx, msgSwitch, httpSrvs); nil != err {
-		spanEmitter.FinishSpanLogError("failed: setup content edge HTTP service handler failed: %v", err)
+		spanEmitter.FinishSpanFailedLogf("setup content edge HTTP service handler failed: %v", err)
 		return
 	}
 	for ident, srv := range httpSrvs {
 		if err = msgSwitch.AddServiceProvider(ident, srv); nil != err {
-			spanEmitter.FinishSpanLogError("failed: cannot attach HTTP server service to switch (ident=%s): %v", ident, err)
+			spanEmitter.FinishSpanFailedLogf("cannot attach HTTP server service to switch (ident=%s): %v", ident, err)
 			return
 		}
 	}
-	spanEmitter.FinishSpan("success")
+	spanEmitter.FinishSpanSuccessWithoutMessage()
 	return
 }
 

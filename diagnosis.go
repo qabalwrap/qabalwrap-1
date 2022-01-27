@@ -59,6 +59,19 @@ func newTraceSpanStartRecord(traceEmitter *TraceEmitter, traceTypeIdent TraceTyp
 	return
 }
 
+func newTraceSpanFinishSuccessRecord(traceEmitter *TraceEmitter, traceTypeIdent TraceType, messageText string) (record *qbw1diagrpcgen.TraceRecord) {
+	record = &qbw1diagrpcgen.TraceRecord{
+		TraceIdent:      traceEmitter.TraceIdent,
+		SpanIdent:       traceEmitter.SpanIdent,
+		ParentSpanIdent: traceEmitter.ParentSpanIdent,
+		TraceType:       int32(traceTypeIdent),
+		EmitAt:          time.Now().UnixNano(),
+		MessageText:     messageText,
+		IsSuccess:       true,
+	}
+	return
+}
+
 func newLinkedTraceRecordWithBaggagedMessages(traceEmitter *TraceEmitter, linkedMessages []*BaggagedMessage) (record *qbw1diagrpcgen.TraceRecord) {
 	linkedSpans := make([]*qbw1diagrpcgen.SpanIdent, 0, len(linkedMessages))
 	for _, bagMsg := range linkedMessages {
@@ -232,6 +245,30 @@ func (diag *DiagnosisEmitter) emitTraceSpanStart(
 	}
 }
 
+func (diag *DiagnosisEmitter) emitTraceSpanFinishSuccess(
+	traceEmitter *TraceEmitter,
+	traceTypeIdent TraceType,
+	messageFmt string,
+	a ...interface{}) {
+	if currentReaderCnt := atomic.LoadInt32(&diag.traceReaderCount); currentReaderCnt <= 0 {
+		return
+	}
+	var messageText string
+	if len(a) == 0 {
+		messageText = messageFmt
+	} else {
+		messageText = fmt.Sprintf(messageFmt, a...)
+	}
+	record := newTraceSpanFinishSuccessRecord(traceEmitter, traceTypeIdent, messageText)
+	select {
+	case diag.traceRecordQueue <- record:
+		return
+	default:
+		log.Printf("WARN: cannot queue trace message (TraceSpanFinishSuccess): full. TraceID=%08X, SpanID=%08X, ParentSpanID=%08X, TraceType=%s, EmitAt=%d, Message=[%s]",
+			record.TraceIdent, record.SpanIdent, record.ParentSpanIdent, TraceType(record.TraceType).String(), record.EmitAt, record.MessageText)
+	}
+}
+
 func (diag *DiagnosisEmitter) StartTrace(
 	serviceName ServiceInstanceIdentifier,
 	operationName,
@@ -289,10 +326,6 @@ func (emitter *TraceEmitter) TraceSpanIdent() (traceSpanIdent *qbw1diagrpcgen.Sp
 	return
 }
 
-func (emitter *TraceEmitter) FinishTrace(traceMessageFmt string, a ...interface{}) {
-	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, TraceFinish, traceMessageFmt, a...)
-}
-
 func (emitter *TraceEmitter) StartSpan(
 	serviceName ServiceInstanceIdentifier,
 	operationName,
@@ -322,36 +355,46 @@ func (emitter *TraceEmitter) StartSpanWithoutMessage(
 	return
 }
 
-func (emitter *TraceEmitter) FinishSpan(traceMessageFmt string, a ...interface{}) {
+func (emitter *TraceEmitter) FinishSpanSuccess(traceMessageFmt string, a ...interface{}) {
+	emitter.diagnosisEmitter.emitTraceSpanFinishSuccess(emitter, TraceSpanFinish, traceMessageFmt, a...)
+}
+
+func (emitter *TraceEmitter) FinishSpanSuccessWithoutMessage() {
+	emitter.diagnosisEmitter.emitTraceSpanFinishSuccess(emitter, TraceSpanFinish, "")
+}
+
+func (emitter *TraceEmitter) FinishSpanFailed(traceMessageFmt string, a ...interface{}) {
 	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, TraceSpanFinish, traceMessageFmt, a...)
 }
 
-func (emitter *TraceEmitter) FinishSpanLogError(traceMessageFmt string, a ...interface{}) {
+func (emitter *TraceEmitter) FinishSpanFailedWithoutMessage() {
+	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, TraceSpanFinish, "failed")
+}
+
+func (emitter *TraceEmitter) FinishSpanFailedLogf(traceMessageFmt string, a ...interface{}) {
 	emitter.diagnosisEmitter.emitTraceRecordErrLogf(emitter, TraceSpanFinish, traceMessageFmt, a...)
 }
 
 func (emitter *TraceEmitter) FinishSpanFailedErr(err error) {
-	messageText := "failed: " + err.Error()
+	messageText := err.Error()
 	emitter.diagnosisEmitter.emitTraceRecordErrLogf(emitter, TraceSpanFinish, messageText)
 }
 
 func (emitter *TraceEmitter) FinishSpanCheckErr(err error) {
 	if nil != err {
-		messageText := "failed: " + err.Error()
+		messageText := err.Error()
 		emitter.diagnosisEmitter.emitTraceRecordErrLogf(emitter, TraceSpanFinish, messageText)
 		return
 	}
-	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, TraceSpanFinish, "success")
+	emitter.diagnosisEmitter.emitTraceSpanFinishSuccess(emitter, TraceSpanFinish, "")
 }
 
 func (emitter *TraceEmitter) FinishSpanCheckBool(isSuccess bool) {
-	var traceMessage string
 	if isSuccess {
-		traceMessage = "success"
+		emitter.diagnosisEmitter.emitTraceSpanFinishSuccess(emitter, TraceSpanFinish, "")
 	} else {
-		traceMessage = "failed"
+		emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, TraceSpanFinish, "failed: is-success=false")
 	}
-	emitter.diagnosisEmitter.emitTraceRecordLogf(emitter, TraceSpanFinish, traceMessage)
 }
 
 func (emitter *TraceEmitter) Logf(traceTypeIdent TraceType, traceMessageFmt string, a ...interface{}) {

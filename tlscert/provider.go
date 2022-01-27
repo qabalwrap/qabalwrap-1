@@ -53,7 +53,7 @@ func (p *Provider) updateSubscribedHostTLSCert(waitGroup *sync.WaitGroup, spanEm
 	tlsCerts := make([]tls.Certificate, 0, len(subscriptionRec.hostNameSerials)+1)
 	cert, err := MakeSelfSignedHostTLSCertificate(defaultCountry, defaultOrganization, defaultTLSHostAddress)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: (updateSubscribedHostTLSCert) prepare default TLS certificate failed: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(updateSubscribedHostTLSCert) prepare default TLS certificate failed: %v", err)
 		return
 	}
 	tlsCerts = append(tlsCerts, *cert)
@@ -61,14 +61,14 @@ func (p *Provider) updateSubscribedHostTLSCert(waitGroup *sync.WaitGroup, spanEm
 		var cert *tls.Certificate
 		var keyPair *CertificateKeyPair
 		if keyPair, err = p.localCerts.prepareHostKeyPair(hostN, p.primaryTLSCertProvider); nil != err {
-			spanEmitter.FinishSpanLogError("failed: (updateSubscribedHostTLSCert) prepare TLS certificate failed [host=%s]: %v", hostN, err)
+			spanEmitter.FinishSpanFailedLogf("(updateSubscribedHostTLSCert) prepare TLS certificate failed [host=%s]: %v", hostN, err)
 			return
 		} else if keyPair != nil {
 			cert = keyPair.TLSCertificate(p.RootCertKeyPair)
 			subscriptionRec.hostNameSerials[hostN] = keyPair.Certificate.SerialNumber.Int64()
 		} else {
 			if cert, err = MakeSelfSignedHostTLSCertificate(p.Country, p.Organization, hostN); nil != err {
-				spanEmitter.FinishSpanLogError("failed: (updateSubscribedHostTLSCert) generate self-signed TLS certificate failed [host=%s]: %v", hostN, err)
+				spanEmitter.FinishSpanFailedLogf("(updateSubscribedHostTLSCert) generate self-signed TLS certificate failed [host=%s]: %v", hostN, err)
 				return
 			}
 			subscriptionRec.hostNameSerials[hostN] = 0
@@ -77,9 +77,9 @@ func (p *Provider) updateSubscribedHostTLSCert(waitGroup *sync.WaitGroup, spanEm
 		tlsCerts = append(tlsCerts, *cert)
 	}
 	if err = subscriptionRec.certSubscriber.UpdateHostTLSCertificates(waitGroup, spanEmitter, tlsCerts); nil != err {
-		spanEmitter.FinishSpanLogError("failed: (updateSubscribedHostTLSCert) update certificate failed: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(updateSubscribedHostTLSCert) update certificate failed: %v", err)
 	} else {
-		spanEmitter.FinishSpan("success: (updateSubscribedHostTLSCert) update certificate complete.")
+		spanEmitter.FinishSpanSuccess("(updateSubscribedHostTLSCert) update certificate complete.")
 	}
 	return
 }
@@ -88,14 +88,14 @@ func (p *Provider) updateAllHostTLSCert(waitGroup *sync.WaitGroup, spanEmitter *
 	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.serviceInstIdent, "update-all-host-tls-cert")
 	for _, subscriptionRec := range p.hostTLSCertSubscriptions {
 		if err = p.updateSubscribedHostTLSCert(waitGroup, spanEmitter, subscriptionRec); nil != err {
-			spanEmitter.FinishSpan("failed: cannot update: %v", err)
+			spanEmitter.FinishSpanFailed("failed: cannot update: %v", err)
 			return
 		}
 	}
 	if err = p.saveWhenModified(p.stateStore); nil != err {
-		spanEmitter.FinishSpanLogError("failed: (updateAllHostTLSCert) cannot save certificate pool: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(updateAllHostTLSCert) cannot save certificate pool: %v", err)
 	} else {
-		spanEmitter.FinishSpan("success")
+		spanEmitter.FinishSpanSuccessWithoutMessage()
 	}
 	return
 }
@@ -104,9 +104,9 @@ func (p *Provider) updateAllHostTLSCert(waitGroup *sync.WaitGroup, spanEmitter *
 func (p *Provider) PostSetup(waitGroup *sync.WaitGroup, spanEmitter *qabalwrap.TraceEmitter) (err error) {
 	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.serviceInstIdent, "tls-provider-post-setup")
 	if err = p.updateAllHostTLSCert(waitGroup, spanEmitter); nil != err {
-		spanEmitter.FinishSpanLogError("failed: (PostSetup) update all host TLS certificate failed: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(PostSetup) update all host TLS certificate failed: %v", err)
 	} else {
-		spanEmitter.FinishSpan("success")
+		spanEmitter.FinishSpanSuccessWithoutMessage()
 	}
 	return
 }
@@ -116,11 +116,11 @@ func (p *Provider) UpdateRootCertificate(waitGroup *sync.WaitGroup, spanEmitter 
 	spanEmitter = spanEmitter.StartSpanWithoutMessage(p.serviceInstIdent, "tls-provider-update-root-cert")
 	changed, err := p.updateRootCert(spanEmitter, certKeyPair)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: (UpdateRootCertificate) update root certificate failed: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(UpdateRootCertificate) update root certificate failed: %v", err)
 		return
 	}
 	if !changed {
-		spanEmitter.FinishSpan("success: (UpdateRootCertificate) not change: changed=%v", changed)
+		spanEmitter.FinishSpanSuccess("(UpdateRootCertificate) not change: changed=%v", changed)
 		return
 	}
 	updateSuccess := true
@@ -133,9 +133,9 @@ func (p *Provider) UpdateRootCertificate(waitGroup *sync.WaitGroup, spanEmitter 
 		updateSuccess = false
 	}
 	if updateSuccess {
-		spanEmitter.FinishSpan("success")
+		spanEmitter.FinishSpanSuccessWithoutMessage()
 	} else {
-		spanEmitter.FinishSpan("failed")
+		spanEmitter.FinishSpanFailedWithoutMessage()
 	}
 	return
 }
@@ -149,14 +149,14 @@ func (p *Provider) UpdateHostCertificate(waitGroup *sync.WaitGroup, spanEmitter 
 			continue
 		}
 		if err = p.updateSubscribedHostTLSCert(waitGroup, spanEmitter, subscriptionRec); nil != err {
-			spanEmitter.FinishSpanLogError("failed: cannot update subscribed host cert: %v", err)
+			spanEmitter.FinishSpanFailedLogf("cannot update subscribed host cert: %v", err)
 			return
 		}
 	}
 	if err = p.saveWhenModified(p.stateStore); nil != err {
-		spanEmitter.FinishSpanLogError("failed: (UpdateHostCertificate) cannot save certificate pool: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(UpdateHostCertificate) cannot save certificate pool: %v", err)
 	} else {
-		spanEmitter.FinishSpan("success: (UpdateHostCertificate) update completed [%s].", hostName)
+		spanEmitter.FinishSpanSuccess("(UpdateHostCertificate) update completed [%s].", hostName)
 	}
 	return
 }
@@ -186,16 +186,16 @@ func (p *Provider) PrepareQBw1HostCertificateAssignment(spanEmitter *qabalwrap.T
 	spanEmitter = spanEmitter.StartSpan(p.serviceInstIdent, "tls-provider-prepare-host-cert-assignment", "hostname=%s", hostName)
 	keyPair, err := p.localCerts.prepareHostKeyPair(hostName, p.primaryTLSCertProvider)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: (PrepareQBw1HostCertificateAssignment) prepare TLS certificate failed [host=%s]: %v", hostName, err)
+		spanEmitter.FinishSpanFailedLogf("(PrepareQBw1HostCertificateAssignment) prepare TLS certificate failed [host=%s]: %v", hostName, err)
 		return
 	}
 	if keyPair != nil {
 		resp = keyPair.QBw1HostCertificateAssignment(hostName)
 	}
 	if err = p.saveWhenModified(p.stateStore); nil != err {
-		spanEmitter.FinishSpanLogError("failed: (PrepareQBw1HostCertificateAssignment) cannot save certificate pool: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(PrepareQBw1HostCertificateAssignment) cannot save certificate pool: %v", err)
 	} else {
-		spanEmitter.FinishSpan("success")
+		spanEmitter.FinishSpanSuccessWithoutMessage()
 	}
 	return
 }

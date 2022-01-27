@@ -66,7 +66,7 @@ func (slot *httpContentTransferSlot) serveWebSocket(spanEmitter *qabalwrap.Trace
 	}
 	slot.sendToPeer(spanEmitter, &req0)
 	// TODO: impl
-	spanEmitter.FinishSpan("failed: not implement yet")
+	spanEmitter.FinishSpanFailed("not implement yet")
 }
 
 func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEmitter, w http.ResponseWriter, r *http.Request) {
@@ -75,7 +75,7 @@ func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEm
 	reqContentBuf, reqCompleted, err := readBytesChunk(reqContentFullBuf, r.Body)
 	if nil != err {
 		http.Error(w, "cannot load request", http.StatusBadRequest)
-		spanEmitter.FinishSpan("failed: cannot load request: %v", err)
+		spanEmitter.FinishSpanFailed("cannot load request: %v", err)
 		return
 	}
 	req0 := &qbw1grpcgen.HTTPContentRequest{
@@ -94,7 +94,7 @@ func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEm
 	case tracedResp := <-slot.respCh:
 		if (tracedResp == nil) || (tracedResp.contentResponse == nil) {
 			http.Error(w, "timeout", http.StatusBadGateway)
-			spanEmitter.FinishSpan("failed: (serveRegular) cannot have request response.")
+			spanEmitter.FinishSpanFailed("(serveRegular) cannot have request response.")
 			return
 		}
 		resp := tracedResp.contentResponse
@@ -109,12 +109,12 @@ func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEm
 			if len(resp.ContentBody) > 0 {
 				w.Write(resp.ContentBody)
 			}
-			spanEmitter.FinishSpan("success: complete in one packet")
+			spanEmitter.FinishSpanSuccess("complete in one packet")
 			return
 		}
 	case <-slot.ctx.Done():
 		http.Error(w, "interrupted", http.StatusBadGateway)
-		spanEmitter.FinishSpan("failed: interrupted at request collect stage")
+		spanEmitter.FinishSpanFailed("interrupted at request collect stage")
 		return
 	}
 	for !reqCompleted {
@@ -140,8 +140,8 @@ func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEm
 				if !emitedHeader {
 					http.Error(w, "timeout", http.StatusBadGateway)
 				}
-				forwardSpanEmitter.FinishSpan("failed: cannot have response")
-				spanEmitter.FinishSpanLogError("failed: (serveRegular) cannot have request response.")
+				forwardSpanEmitter.FinishSpanFailed("cannot have response")
+				spanEmitter.FinishSpanFailedLogf("failed: (serveRegular) cannot have request response.")
 				return
 			}
 			resp := tracedResp.contentResponse
@@ -158,19 +158,19 @@ func (slot *httpContentTransferSlot) serveRegular(spanEmitter *qabalwrap.TraceEm
 				w.Write(resp.ContentBody)
 			}
 			if resp.IsComplete {
-				forwardSpanEmitter.FinishSpan("success")
-				spanEmitter.FinishSpan("success: complete in multiple packet")
+				forwardSpanEmitter.FinishSpanSuccessWithoutMessage()
+				spanEmitter.FinishSpanSuccess("complete in multiple packet")
 				return
 			}
 		case <-slot.ctx.Done():
 			if !emitedHeader {
 				http.Error(w, "interrupted", http.StatusBadGateway)
 			}
-			forwardSpanEmitter.FinishSpan("failed: interrupted")
-			spanEmitter.FinishSpan("failed: interrupted at response stage")
+			forwardSpanEmitter.FinishSpanFailed("interrupted")
+			spanEmitter.FinishSpanFailed("interrupted at response stage")
 			return
 		}
-		forwardSpanEmitter.FinishSpan("success")
+		forwardSpanEmitter.FinishSpanSuccessWithoutMessage()
 	}
 }
 

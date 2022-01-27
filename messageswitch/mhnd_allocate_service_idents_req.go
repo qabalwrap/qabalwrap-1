@@ -10,12 +10,12 @@ import (
 func queueAllocateServiceIdentsRequest(spanEmitter *qabalwrap.TraceEmitter, s *MessageSwitch, m *qabalwrap.EnvelopedMessage) (err error) {
 	spanEmitter = spanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "queue-allocate-service-idents-req")
 	if !s.primarySwitch {
-		spanEmitter.FinishSpan("failed: (queueAllocateServiceIdentsRequest) not primary switch: src=%d", m.SourceServiceIdent)
+		spanEmitter.FinishSpanFailed("(queueAllocateServiceIdentsRequest) not primary switch: src=%d", m.SourceServiceIdent)
 		return ErrNotSupportedOperation
 	}
 	var req qbw1grpcgen.AllocateServiceIdentsRequest
 	if err = m.Unmarshal(&req); nil != err {
-		spanEmitter.FinishSpan("failed: (queueAllocateServiceIdentsRequest) cannot unpack request: %v", err)
+		spanEmitter.FinishSpanFailed("(queueAllocateServiceIdentsRequest) cannot unpack request: %v", err)
 		return
 	}
 	var unassignedSrvRefs []*ServiceReference
@@ -41,7 +41,7 @@ func queueAllocateServiceIdentsRequest(spanEmitter *qabalwrap.TraceEmitter, s *M
 		unassignedSrvRefs = append(unassignedSrvRefs, srvRef)
 	}
 	if len(unassignedSrvRefs) == 0 {
-		spanEmitter.FinishSpan("success: empty unassigned service reference")
+		spanEmitter.FinishSpanSuccess("empty unassigned service reference")
 		return
 	}
 	for _, srvRef := range unassignedSrvRefs {
@@ -52,18 +52,18 @@ func queueAllocateServiceIdentsRequest(spanEmitter *qabalwrap.TraceEmitter, s *M
 		spanEmitter.EventInfo("(queueAllocateServiceIdentsRequest) push request [%s/%s] into queue.",
 			srvRef.TextIdent, srvRef.UniqueIdent.String())
 	}
-	spanEmitter.FinishSpan("success")
+	spanEmitter.FinishSpanSuccessWithoutMessage()
 	return
 }
 
 func handleAllocateServiceIdentsRequest(s *MessageSwitch, srvRefReq *serviceReferenceRequest) {
 	spanEmitter := srvRefReq.SpanEmitter.StartSpanWithoutMessage(s.ServiceInstanceIdent, "hnd-allocate-service-ident")
 	if !s.primarySwitch {
-		spanEmitter.FinishSpan("failed: (handleAllocateServiceIdentsRequest) not primary switch: serviceRef=[%s/%s]",
+		spanEmitter.FinishSpanFailed("(handleAllocateServiceIdentsRequest) not primary switch: serviceRef=[%s/%s]",
 			srvRefReq.ServiceRef.TextIdent, srvRefReq.ServiceRef.UniqueIdent.String())
 		return
 	}
 	s.crossBar.addUnassignedServiceConnectByServiceReference(spanEmitter, srvRefReq.ServiceRef)
 	s.crossBar.assignServiceSerialIdents(spanEmitter)
-	spanEmitter.FinishSpan("success")
+	spanEmitter.FinishSpanSuccessWithoutMessage()
 }

@@ -84,18 +84,18 @@ func (d *messageDispatcher) emitHeartbeatPing(spanEmitter *qabalwrap.TraceEmitte
 	}
 	buf, err := proto.Marshal(&aux)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: (emitHeartbeatPingMessage) cannot marshal heartbeat ping: (relay-%d) %v", d.relayIndex, err)
+		spanEmitter.FinishSpanFailedLogf("(emitHeartbeatPingMessage) cannot marshal heartbeat ping: (relay-%d) %v", d.relayIndex, err)
 		return
 	}
 	m := qabalwrap.NewClearEnvelopedMessage(qabalwrap.AccessProviderPeerServiceIdent, qabalwrap.AccessProviderPeerServiceIdent,
 		qabalwrap.MessageContentHeartbeatPing, buf)
 	d.lastEmitPing = time.Now()
 	if !d.relayInst.NonblockingEmitMessage(spanEmitter, m) {
-		spanEmitter.FinishSpanLogError("failed: cannot emit heartbeat message to relay-%d.", d.relayIndex)
+		spanEmitter.FinishSpanFailedLogf("cannot emit heartbeat message to relay-%d.", d.relayIndex)
 		return
 	}
 	d.lastSuccessPing = time.Now()
-	spanEmitter.FinishSpan("success")
+	spanEmitter.FinishSpanSuccessWithoutMessage()
 }
 
 func (d *messageDispatcher) processPeerKnownServiceIdents(spanEmitter *qabalwrap.TraceEmitter, m *qabalwrap.EnvelopedMessage) {
@@ -103,13 +103,13 @@ func (d *messageDispatcher) processPeerKnownServiceIdents(spanEmitter *qabalwrap
 	var d0 md5digest.MD5Digest
 	m.Digest(&d0)
 	if d.lastKnownServiceIdentsDigest == d0 {
-		spanEmitter.FinishSpan("success: peer digest not change")
+		spanEmitter.FinishSpanSuccess("peer digest not change")
 		return
 	}
 	d.lastKnownServiceIdentsDigest = d0
 	var knownSrvIdents qbw1grpcgen.KnownServiceIdents
 	if err := m.Unmarshal(&knownSrvIdents); nil != err {
-		spanEmitter.FinishSpanLogError("failed: (messageDispatcher::processPeerKnownServiceIdents) cannot unmarshal known service identifiers for relay-%d: %v", d.relayIndex, err)
+		spanEmitter.FinishSpanFailedLogf("(messageDispatcher::processPeerKnownServiceIdents) cannot unmarshal known service identifiers for relay-%d: %v", d.relayIndex, err)
 		return
 	}
 	evt := &knownServiceIdentsNotify{
@@ -118,14 +118,14 @@ func (d *messageDispatcher) processPeerKnownServiceIdents(spanEmitter *qabalwrap
 		knownServiceIdents: &knownSrvIdents,
 	}
 	d.messageSwitch.notifyPeerKnownServiceIdents <- evt
-	spanEmitter.FinishSpan("success: emit update to peer")
+	spanEmitter.FinishSpanSuccess("emit update to peer")
 }
 
 func (d *messageDispatcher) processPeerPing(spanEmitter *qabalwrap.TraceEmitter, m *qabalwrap.EnvelopedMessage) {
 	spanEmitter = spanEmitter.StartSpanWithoutMessage(d.serviceInstIdent, "peer-ping-req")
 	var hbPing qbw1grpcgen.HeartbeatPingPong
 	if err := m.Unmarshal(&hbPing); nil != err {
-		spanEmitter.FinishSpanLogError("failed: (messageDispatcher::processPeerPing) cannot unwrap ping: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(messageDispatcher::processPeerPing) cannot unwrap ping: %v", err)
 		return
 	}
 	aux := qbw1grpcgen.HeartbeatPingPong{
@@ -134,43 +134,43 @@ func (d *messageDispatcher) processPeerPing(spanEmitter *qabalwrap.TraceEmitter,
 	}
 	buf, err := proto.Marshal(&aux)
 	if nil != err {
-		spanEmitter.FinishSpanLogError("failed: (messageDispatcher::processPeerPing) cannot marshal heartbeat pong: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(messageDispatcher::processPeerPing) cannot marshal heartbeat pong: %v", err)
 		return
 	}
 	replyMsg := qabalwrap.NewClearEnvelopedMessage(
 		qabalwrap.AccessProviderPeerServiceIdent, qabalwrap.AccessProviderPeerServiceIdent,
 		qabalwrap.MessageContentHeartbeatPong, buf)
 	if !d.relayInst.NonblockingEmitMessage(spanEmitter, replyMsg) {
-		spanEmitter.FinishSpanLogError("failed: (messageDispatcher::processPeerPing) cannot emit ping message (relay-index=%d): %v", d.relayIndex, err)
+		spanEmitter.FinishSpanFailedLogf("(messageDispatcher::processPeerPing) cannot emit ping message (relay-index=%d): %v", d.relayIndex, err)
 		return
 	}
-	spanEmitter.FinishSpan("success")
+	spanEmitter.FinishSpanSuccessWithoutMessage()
 }
 
 func (d *messageDispatcher) processPeerPong(spanEmitter *qabalwrap.TraceEmitter, m *qabalwrap.EnvelopedMessage) {
 	spanEmitter = spanEmitter.StartSpanWithoutMessage(d.serviceInstIdent, "peer-pong-process")
 	var hbPong qbw1grpcgen.HeartbeatPingPong
 	if err := m.Unmarshal(&hbPong); nil != err {
-		spanEmitter.FinishSpanLogError("failed: (messageDispatcher::processPeerPong) cannot unwrap pong: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(messageDispatcher::processPeerPong) cannot unwrap pong: %v", err)
 		return
 	}
 	costNanoSec := time.Now().UnixNano() - hbPong.CreateTimestamp
-	spanEmitter.FinishSpan("success: heartbeat ping-pong cost: %d (ns)", costNanoSec)
+	spanEmitter.FinishSpanSuccess("heartbeat ping-pong cost: %d (ns)", costNanoSec)
 }
 
 func (d *messageDispatcher) processPeerAllocateServiceIdentsRequest(spanEmitter *qabalwrap.TraceEmitter, m *qabalwrap.EnvelopedMessage) {
 	spanEmitter = spanEmitter.StartSpanWithoutMessage(d.serviceInstIdent, "peer-alloc-service-ident-req")
 	if !d.messageSwitch.localServiceRef.IsNormalSerialIdent() {
-		spanEmitter.FinishSpanLogError("failed: (messageDispatcher::processPeerAllocateServiceIdentsRequest) cannot forward. local serial is not valid: %d",
+		spanEmitter.FinishSpanFailedLogf("(messageDispatcher::processPeerAllocateServiceIdentsRequest) cannot forward. local serial is not valid: %d",
 			d.messageSwitch.localServiceRef.SerialIdent)
 		return
 	}
 	m.SourceServiceIdent = d.messageSwitch.localServiceRef.SerialIdent
 	m.DestinationServiceIdent = qabalwrap.PrimaryMessageSwitchServiceIdent
 	if err := d.messageSwitch.forwardClearEnvelopedMessage(spanEmitter, m); nil != err {
-		spanEmitter.FinishSpanLogError("failed: (messageDispatcher::processPeerAllocateServiceIdentsRequest) forward failed: %v", err)
+		spanEmitter.FinishSpanFailedLogf("(messageDispatcher::processPeerAllocateServiceIdentsRequest) forward failed: %v", err)
 	} else {
-		spanEmitter.FinishSpan("success")
+		spanEmitter.FinishSpanSuccessWithoutMessage()
 	}
 }
 
