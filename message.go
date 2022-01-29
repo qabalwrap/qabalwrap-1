@@ -270,13 +270,13 @@ func UnpackBaggagedMessage(b []byte) (m *BaggagedMessage, remainBytes []byte, er
 }
 
 // UnpackEnvelopedMessage fetch RawMessage from given buffer and return remain buffer.
-func UnpackBaggagedEnvelopedMessage(b []byte, diagnosisEmitter *DiagnosisEmitter, traceMessageFmt string, a ...interface{}) (spanEmitter *TraceEmitter, m *EnvelopedMessage, remainBytes []byte, err error) {
+func UnpackBaggagedEnvelopedMessage(b []byte, diagnosisEmitter *DiagnosisEmitter, serviceInstIdent ServiceInstanceIdentifier, operationName string) (spanEmitter *TraceEmitter, m *EnvelopedMessage, remainBytes []byte, err error) {
 	baggedMsg, remainBytes, err := UnpackBaggagedMessage(b)
 	if baggedMsg == nil {
 		return
 	}
 	m = &baggedMsg.EnvelopedMessage
-	spanEmitter = diagnosisEmitter.StartSpanFromRemoteTrace(baggedMsg.TraceIdent, baggedMsg.SpanIdent, traceMessageFmt, a...)
+	spanEmitter = diagnosisEmitter.StartSpanFromRemoteTrace(baggedMsg.TraceIdent, baggedMsg.SpanIdent, serviceInstIdent, operationName)
 	return
 }
 

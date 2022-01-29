@@ -298,7 +298,10 @@ func (diag *DiagnosisEmitter) StartTraceWithoutMessage(
 	return
 }
 
-func (diag *DiagnosisEmitter) StartSpanFromRemoteTrace(remoteTraceIdent int32, remoteSpanIdent int32, traceMessageFmt string, a ...interface{}) (traceEmitter *TraceEmitter) {
+func (diag *DiagnosisEmitter) StartSpanFromRemoteTrace(
+	remoteTraceIdent int32, remoteSpanIdent int32,
+	serviceName ServiceInstanceIdentifier,
+	operationName string) (traceEmitter *TraceEmitter) {
 	spanIdent := diag.AllocateSerial()
 	traceEmitter = &TraceEmitter{
 		diagnosisEmitter: diag,
@@ -306,7 +309,7 @@ func (diag *DiagnosisEmitter) StartSpanFromRemoteTrace(remoteTraceIdent int32, r
 		SpanIdent:        spanIdent,
 		ParentSpanIdent:  remoteSpanIdent,
 	}
-	diag.emitTraceRecordLogf(traceEmitter, TraceSpanStart, traceMessageFmt, a...)
+	diag.emitTraceSpanStart(traceEmitter, TraceSpanStart, serviceName, operationName, "")
 	return
 }
 

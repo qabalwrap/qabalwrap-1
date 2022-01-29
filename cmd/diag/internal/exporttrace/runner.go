@@ -143,5 +143,8 @@ func (cr *Runner) Run(ctx context.Context, client gen.Qabalwrap1DiagnosisGRPCCli
 		}
 		traceRec, err = traceReader.Recv()
 	}
+	for spanIdent, spanInst := range cr.stagedSpans {
+		log.Printf("INFO: remain span [%X]: %s - %s: [%s]", spanIdent, spanInst.ServiceName, spanInst.TitleText, spanInst.MessageText)
+	}
 	return
 }

@@ -173,7 +173,7 @@ func (p *baseRelayProvider) dispatchMessages(spanEmitter *qabalwrap.TraceEmitter
 	for len(payload) > 0 {
 		var remoteSpanEmitter *qabalwrap.TraceEmitter
 		var msg *qabalwrap.EnvelopedMessage
-		if remoteSpanEmitter, msg, payload, err = qabalwrap.UnpackBaggagedEnvelopedMessage(payload, p.diagnosisEmitter, "relay-base-dispatch-message"); nil != err {
+		if remoteSpanEmitter, msg, payload, err = qabalwrap.UnpackBaggagedEnvelopedMessage(payload, p.diagnosisEmitter, p.serviceInstIdent, "relay-base-dispatch-msg"); nil != err {
 			spanEmitter.FinishSpanFailedLogf("(commonRelayProviderBase::dispatchMessages) unpack into raw message failed: %v", err)
 			return
 		}
@@ -181,6 +181,7 @@ func (p *baseRelayProvider) dispatchMessages(spanEmitter *qabalwrap.TraceEmitter
 			p.messageDispatcher.DispatchMessage(remoteSpanEmitter, msg)
 			dispatchedMessageCount++
 			linkedRemoteTraceIdents = append(linkedRemoteTraceIdents, remoteSpanEmitter.TraceSpanIdent())
+			remoteSpanEmitter.FinishSpanSuccessWithoutMessage()
 		}
 	}
 	if len(linkedRemoteTraceIdents) > 0 {
