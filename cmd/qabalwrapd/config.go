@@ -38,8 +38,9 @@ type configuration struct {
 		TraceBuffer  int    `yaml:"trace-buffer"`
 	} `yaml:"diagnosis-socket"`
 	HTTPServers []*struct {
-		TextIdent  string `yaml:"ident"`
-		ListenAddr string `yaml:"listen"`
+		TextIdent    string `yaml:"ident"`
+		ListenAddr   string `yaml:"listen"`
+		MaxLinkCount int    `yaml:"max-link"`
 	} `yaml:"http-servers"`
 	AccessProviders struct {
 		HTTPServers []*struct {
@@ -180,7 +181,7 @@ func (cfg *configuration) makeInstance() (ctx context.Context, cancel context.Ca
 	}
 	httpSrvs := make(map[string]*qbw1httpserver.Service)
 	for _, opt := range cfg.HTTPServers {
-		srv := qbw1httpserver.NewService(opt.ListenAddr)
+		srv := qbw1httpserver.NewService(opt.ListenAddr, opt.MaxLinkCount)
 		httpSrvs[opt.TextIdent] = srv
 	}
 	if err = cfg.setupAccessProviderHTTPServerService(ctx, msgSwitch, httpSrvs); nil != err {
@@ -262,6 +263,9 @@ func (cfg *configuration) normalizeHTTPServers(textIdentSet map[string]struct{})
 		if _, ok := textIdentSet[opts.TextIdent]; ok {
 			err = fmt.Errorf("given `ident` of %d-th `http-servers` existed: %s", idx+1, opts.TextIdent)
 			return
+		}
+		if opts.MaxLinkCount <= 0 {
+			opts.MaxLinkCount = 1
 		}
 		textIdentSet[opts.TextIdent] = struct{}{}
 	}

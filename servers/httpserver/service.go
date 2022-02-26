@@ -25,14 +25,16 @@ type Service struct {
 
 	tlsCerts []tls.Certificate
 
+	linkStats        linkStatSlice
 	diagnosisEmitter *qabalwrap.DiagnosisEmitter
 }
 
-func NewService(listenAddr string) (s *Service) {
+func NewService(listenAddr string, maxLinkCount int) (s *Service) {
 	s = &Service{
 		listenAddr:   listenAddr,
 		hostHandlers: make(map[string]http.Handler),
 	}
+	s.linkStats.init(maxLinkCount)
 	return
 }
 
@@ -52,6 +54,12 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	linkIndex, ok := s.linkStats.allocateLink(r)
+	if !ok {
+		http.Error(w, "all link unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	defer s.linkStats.releaseLink(linkIndex)
 	hnd.ServeHTTP(w, r)
 }
 
