@@ -264,7 +264,10 @@ func (cfg *configuration) normalizeHTTPServers(textIdentSet map[string]struct{})
 			err = fmt.Errorf("given `ident` of %d-th `http-servers` existed: %s", idx+1, opts.TextIdent)
 			return
 		}
-		if opts.MaxLinkCount <= 0 {
+		if opts.MaxLinkCount == 0 {
+			opts.MaxLinkCount = 1024
+		}
+		if opts.MaxLinkCount < 0 {
 			opts.MaxLinkCount = 1
 		}
 		textIdentSet[opts.TextIdent] = struct{}{}
