@@ -44,3 +44,15 @@ func (s *messageSender) ServiceSerialIdentByTextIdent(textIdent string) (serialI
 	ok = true
 	return
 }
+
+func (s *messageSender) ServiceProviderRefByTextIdent(textIdent string) (serviceProvider qabalwrap.ServiceProvider, serialIdent int, hasReceiver, ok bool) {
+	conn := s.messageSwitch.crossBar.getServiceConnectByTextIdent(textIdent)
+	if conn == nil {
+		return
+	}
+	serviceProvider = conn.serviceProvider
+	hasReceiver = conn.linkAvailable()
+	serialIdent = conn.SerialIdent
+	ok = true
+	return
+}

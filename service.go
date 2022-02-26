@@ -27,6 +27,9 @@ type MessageSender interface {
 
 	// ServiceSerialIdentByTextIdent lookup service serial identifier with given text identifier.
 	ServiceSerialIdentByTextIdent(textIdent string) (serialIdent int, hasReceiver, ok bool)
+
+	// ServiceProviderRefByTextIdent lookup service provider reference and serial identifier with given text identifier.
+	ServiceProviderRefByTextIdent(textIdent string) (serviceProvider ServiceProvider, serialIdent int, hasReceiver, ok bool)
 }
 
 type MessageDispatcher interface {
