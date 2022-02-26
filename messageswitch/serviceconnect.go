@@ -136,11 +136,12 @@ func (c *serviceConnect) setServiceProvider(serviceProvider qabalwrap.ServicePro
 // setRelayProviders connect given relayProviders with service.
 // Should only invoke at setup stage or before service ident assignment.
 func (c *serviceConnect) setRelayProviders(spanEmitter *qabalwrap.TraceEmitter, relayProviders []qabalwrap.RelayProvider) {
-	spanEmitter = spanEmitter.StartSpanWithoutMessage(c.serviceInstIdent, "service-connect-set-relay-provider")
 	if c == nil {
-		spanEmitter.FinishSpanSuccess("empty service connect")
+		spanEmitter.EventWarning("setRelayProviders: empty service connect")
 		return
-	} else if c.serviceProvider != nil {
+	}
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(c.serviceInstIdent, "service-connect-set-relay-provider")
+	if c.serviceProvider != nil {
 		spanEmitter.FinishSpanSuccess("service provider not empty")
 		return
 	} else if len(relayProviders) == len(c.relayStatsByIndex) {
@@ -154,11 +155,12 @@ func (c *serviceConnect) setRelayProviders(spanEmitter *qabalwrap.TraceEmitter, 
 }
 
 func (c *serviceConnect) setMessageSender(spanEmitter *qabalwrap.TraceEmitter, s *MessageSwitch) {
-	spanEmitter = spanEmitter.StartSpanWithoutMessage(c.serviceInstIdent, "service-connect-set-message-sender")
 	if c == nil {
-		spanEmitter.FinishSpanSuccess("empty service connect")
+		spanEmitter.EventWarning("setMessageSender: empty service connect")
 		return
-	} else if c.alreadySetMessageSender {
+	}
+	spanEmitter = spanEmitter.StartSpanWithoutMessage(c.serviceInstIdent, "service-connect-set-message-sender")
+	if c.alreadySetMessageSender {
 		spanEmitter.FinishSpanSuccess("already set message sender (serial-ident=%d)", c.SerialIdent)
 		return
 	} else if c.serviceProvider == nil {
