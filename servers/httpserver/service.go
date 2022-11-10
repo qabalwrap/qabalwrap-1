@@ -107,9 +107,8 @@ func (s *Service) Setup(
 
 func (s *Service) startImpl(waitGroup *sync.WaitGroup) (err error) {
 	tlsCfg := &tls.Config{
-		PreferServerCipherSuites: true,
-		MinVersion:               tls.VersionTLS13,
-		Certificates:             s.tlsCerts,
+		MinVersion:   tls.VersionTLS12,
+		Certificates: s.tlsCerts,
 	}
 	s.serverInst = &http.Server{
 		Addr:              s.listenAddr,
