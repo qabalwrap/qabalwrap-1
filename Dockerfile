@@ -1,4 +1,4 @@
-FROM golang:1-buster as builder0
+FROM golang:1-bullseye as builder0
 
 WORKDIR /app-build
 COPY . /app-build
@@ -7,7 +7,7 @@ RUN go build github.com/qabalwrap/qabalwrap-1/cmd/qabalwrapd    \
 	&& mv qabalwrapd /app-build/binaries
 
 
-FROM debian:10
+FROM debian:11
 
 RUN apt-get update                      \
 	&& apt-get -y dist-upgrade          \
