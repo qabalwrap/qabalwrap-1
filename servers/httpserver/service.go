@@ -51,6 +51,7 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// TODO: logging access target
 	hnd, ok := s.hostHandlers[host]
 	if !ok {
+		w.Header().Set("Strict-Transport-Security", "max-age=172800")
 		http.NotFound(w, r)
 		return
 	}
