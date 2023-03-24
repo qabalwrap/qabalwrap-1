@@ -109,6 +109,14 @@ func (s *Service) startImpl(waitGroup *sync.WaitGroup) (err error) {
 	tlsCfg := &tls.Config{
 		MinVersion:   tls.VersionTLS12,
 		Certificates: s.tlsCerts,
+		CipherSuites: []uint16{
+			// AEADs w/ ECDHE
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384, tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305, tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305,
+			// AEADs w/o ECDHE
+			tls.TLS_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_RSA_WITH_AES_256_GCM_SHA384},
 	}
 	s.serverInst = &http.Server{
 		Addr:              s.listenAddr,
